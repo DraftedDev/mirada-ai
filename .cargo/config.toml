@@ -1,0 +1,17 @@
+[profile.dev]
+incremental = true
+rustflags = ["-Zthreads=0"]
+
+[profile.release]
+lto = "thin"
+opt-level = 1
+strip = true
+panic = "abort"
+rustflags = ["-Ctarget-cpu=native", "-Zthreads=0"]
+
+[profile.release.package."*"]
+opt-level = 3
+
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld.exe"
+rustdocflags = ["-Clinker=rust-lld.exe"]

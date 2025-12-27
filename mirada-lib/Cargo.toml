@@ -1,0 +1,19 @@
+[package]
+name = "mirada-lib"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+heed = "0.22.0"
+time = { workspace = true, features = ["serde"] }
+log = { workspace = true }
+serde = { workspace = true }
+
+[dependencies.burn]
+version = "0.19.1"
+default-features = false
+features = ["std", "autodiff", "train", "tui", "fusion"]
+
+[features]
+default = []
+cuda = ["burn/cuda"]

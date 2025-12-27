@@ -7,6 +7,7 @@ use mirada_lib::model::{Model, ModelConfig};
 use mirada_lib::training::TrainingConfig;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
+use std::path::Path;
 
 pub fn train(
     database: String,
@@ -16,6 +17,7 @@ pub fn train(
     training_cfg: String,
     interval: String,
     artifacts: String,
+    cleanup: bool,
 ) {
     let database = Database::new(database);
 
@@ -44,8 +46,15 @@ pub fn train(
     log::info!("Creating device...");
     let device = mirada_lib::Device::default();
 
-    log::info!("Initializing model...");
-    let model: Model<AutodiffBackend> = model_cfg.init(&device);
+    let model: Model<AutodiffBackend> = if cleanup {
+        log::info!("Cleaning up artifact directory...");
+        std::fs::remove_dir(&artifacts).ok();
+        std::fs::create_dir_all(&artifacts).ok();
+
+        model_cfg.init(&device)
+    } else {
+        Model::load(model_cfg, Path::new(&artifacts).join("model"), &device)
+    };
 
     log::info!("Training model...");
     model.train(

@@ -34,7 +34,6 @@ pub enum Command {
     DataDump,
 }
 
-// TODO: make file conflict with start, end, and ticker
 /// Arguments for the fetch command.
 #[derive(Args)]
 pub struct FetchArgs {
@@ -79,6 +78,9 @@ pub struct TrainArgs {
     /// The artifacts directory to use for training.
     #[arg(short = 'a', long = "artifacts", default_value = "./artifacts")]
     pub artifacts: String,
+    /// Whether to cleanup the artifacts directory before training.
+    #[arg(short = 'c', long = "cleanup", default_value = "false")]
+    pub cleanup: bool,
     /// A CSV file containing the dataset to train the model on.
     pub train_dataset: String,
     /// A CSV file containing the dataset to validate the model on.

@@ -56,6 +56,7 @@ fn main() {
             args.training,
             args.interval,
             args.artifacts,
+            args.cleanup,
         ),
         Command::Predict(args) => predict::predict(
             cli.timeout,

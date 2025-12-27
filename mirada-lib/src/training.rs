@@ -26,10 +26,6 @@ impl<B: AutodiffBackend> Model<B> {
     ) {
         let artifacts = artifacts.as_ref();
 
-        log::info!("Cleaning up artifact directory...");
-        std::fs::remove_dir(artifacts).ok();
-        std::fs::create_dir_all(artifacts).ok();
-
         B::seed(&device, config.seed);
 
         let batcher = StockBatcher::new(database.clone(), interval);

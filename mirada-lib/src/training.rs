@@ -86,7 +86,7 @@ pub struct TrainingConfig {
     pub batch_size: usize,
     #[config(default = 4)]
     pub num_workers: usize,
-    #[config(default = 42)]
+    #[config(default = 12)]
     pub seed: u64,
     #[config(default = 1.0e-4)]
     pub init_learning_rate: f64,

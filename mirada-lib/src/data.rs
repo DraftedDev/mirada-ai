@@ -6,11 +6,11 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use time::OffsetDateTime;
 
-pub const WINDOW_Z: usize = 60;
+pub const WINDOW_Z: usize = 90;
 pub const WINDOW_SCALE: usize = 252;
-pub const CLIP: f32 = 5.0;
+pub const CLIP: f32 = 6.0;
 pub const HORIZON: usize = 3;
-pub const FEATURE_SIZE: usize = 10;
+pub const FEATURE_SIZE: usize = 18;
 pub const OTHER_STOCKS: usize = 5;
 pub const TOTAL_FEATURE_SIZE: usize = FEATURE_SIZE * (OTHER_STOCKS + 1);
 
@@ -79,7 +79,7 @@ impl StockData {
 
         log::info!("Finalizing features and targets data...");
         // Remove last `horizon` rows from features to match target length
-        let aligned_features: Vec<[f32; 10]> =
+        let aligned_features: Vec<[f32; FEATURE_SIZE]> =
             norm_features[..norm_features.len() - HORIZON].to_vec();
 
         let flat_features: Vec<f32> = aligned_features
@@ -88,7 +88,6 @@ impl StockData {
             .copied()
             .collect();
 
-        log::info!("Constructing stock data...");
         Self {
             features: SerdeTensor::new([aligned_features.len(), FEATURE_SIZE], flat_features),
             targets: SerdeTensor::new([aligned_features.len(), 1], targets),

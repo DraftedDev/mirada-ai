@@ -29,9 +29,8 @@ pub enum Command {
     Train(TrainArgs),
     /// Makes a prediction for the given stock data.
     Predict(PredictArgs),
-    /// Dumps the contents of the database out to the console.
-    #[command(name = "data-dump")]
-    DataDump,
+    /// Dumps the given data kind out to the console.
+    Dump(DumpArgs),
 }
 
 /// Arguments for the fetch command.
@@ -108,4 +107,11 @@ pub struct PredictArgs {
     /// Other tickers to include in the features input.
     #[arg(value_delimiter = ',')]
     pub others: Vec<String>,
+}
+
+/// Arguments for the dump command.
+#[derive(Args)]
+pub struct DumpArgs {
+    /// The data kind to dump. Available: 'database'.
+    pub kind: String,
 }

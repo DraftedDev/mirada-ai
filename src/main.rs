@@ -1,7 +1,6 @@
 use crate::cli::{Command, MirandaCli};
 use clap::Parser;
 use log::LevelFilter;
-use std::str::FromStr;
 
 pub mod cli;
 
@@ -11,27 +10,19 @@ pub mod train;
 
 pub mod predict;
 
-pub mod data_dump;
+pub mod dump;
 
 pub mod utils;
 
 fn main() {
-    // TODO: config via env
     env_logger::builder()
-        .format_target(false)
-        .format_file(false)
-        .format_line_number(false)
-        .format_module_path(true)
-        .format_source_path(false)
+        .format_target(utils::env_or_default("LOG_TARGET", false))
+        .format_file(utils::env_or_default("LOG_FILE", false))
+        .format_line_number(utils::env_or_default("LOG_LINE_NUMBER", false))
+        .format_module_path(utils::env_or_default("LOG_MODULE_PATH", false))
+        .format_source_path(utils::env_or_default("LOG_SOURCE_PATH", false))
         .format_timestamp(None)
-        .filter_level(
-            LevelFilter::from_str(
-                std::env::var("LOG_LEVEL")
-                    .unwrap_or("info".to_string())
-                    .as_str(),
-            )
-            .expect("Invalid log level"),
-        )
+        .filter_level(utils::env_or_default("LOG_LEVEL", LevelFilter::Info))
         .filter_module("cubecl_cuda", LevelFilter::Error)
         .filter_module("burn", LevelFilter::Error)
         .init();
@@ -68,6 +59,6 @@ fn main() {
             args.ticker,
             args.others,
         ),
-        Command::DataDump => data_dump::data_dump(cli.database),
+        Command::Dump(args) => dump::dump(cli.database, args.kind),
     }
 }

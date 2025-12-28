@@ -1,4 +1,6 @@
 use serde::Deserialize;
+use std::fmt::Debug;
+use std::str::FromStr;
 use std::time::Duration;
 use yahoo_finance_api::time::{Date, Month};
 use yahoo_finance_api::{YahooConnector, YahooConnectorBuilder};
@@ -43,4 +45,14 @@ pub fn yahoo(timeout: u64) -> YahooConnector {
         .timeout(Duration::from_millis(timeout))
         .build()
         .expect("Failed to build Yahoo connector")
+}
+
+pub fn env_or_default<T>(var: &str, default: T) -> T
+where
+    T: FromStr,
+    T::Err: Debug,
+{
+    std::env::var(var)
+        .map(|s| T::from_str(&s).expect(&format!("Failed to parse env var {var}")))
+        .unwrap_or(default)
 }

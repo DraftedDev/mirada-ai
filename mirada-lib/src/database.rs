@@ -7,6 +7,9 @@ use std::path::Path;
 pub const DATABASE_PATH: &str = "./database.lmdb";
 pub const DATABASE_NAME: &str = "stocks";
 
+// 10GB
+pub const MAP_SIZE: usize = 10 * 1024 * 1024 * 1024;
+
 #[derive(Clone)]
 pub struct Database {
     database: Heed<SerdeBincode<DataKey>, SerdeBincode<StockData>>,
@@ -26,6 +29,7 @@ impl Database {
         let env = unsafe {
             EnvOpenOptions::new()
                 .read_txn_without_tls()
+                .map_size(MAP_SIZE)
                 .max_dbs(1)
                 .max_readers(16)
                 .flags(EnvFlags::empty())
@@ -57,18 +61,6 @@ impl Database {
         self.database
             .put(&mut txn, &key, &data)
             .expect("Failed to insert data");
-
-        txn.commit().expect("Failed to commit data");
-    }
-
-    pub fn insert_many(&self, items: Vec<(DataKey, StockData)>) {
-        let mut txn = self.env.write_txn().expect("Failed to get write lock");
-
-        for (key, data) in items {
-            self.database
-                .put(&mut txn, &key, &data)
-                .expect("Failed to insert data");
-        }
 
         txn.commit().expect("Failed to commit data");
     }

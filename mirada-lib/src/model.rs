@@ -84,7 +84,7 @@ impl<B: Backend> ValidStep<DataBatch<B>, RegressionOutput<B>> for Model<B> {
 #[derive(Debug, Config)]
 pub struct ModelConfig {
     /// Number of hidden units per hidden layer.
-    #[config(default = 64)]
+    #[config(default = 128)]
     pub hidden_size: usize,
 
     /// Dropout probability for the hidden layer.

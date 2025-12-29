@@ -1,5 +1,5 @@
 use crate::fetch::fetch_data;
-use crate::utils::{interval_to_duration, parse_date, yahoo};
+use crate::utils::{DATE_FORMAT, interval_to_duration, parse_date, round_to, yahoo};
 use mirada_lib::data::HORIZON;
 use mirada_lib::model::{Model, ModelConfig};
 use mirada_lib::{Backend, Device};
@@ -46,13 +46,23 @@ pub fn predict(
 
     log::info!("Predicting price for '{ticker}'....");
     let result = model.infer_price(data, &device);
+    let rounded = round_to(result, 2);
 
-    let pred_date = end + interval_dur * HORIZON as u32;
+    let approx_date = end + interval_dur * HORIZON as u32;
 
     log::info!(
         "### MODEL PREDICTION ###\n\
-\tStock: {ticker}\n\
-\tPrice: {result}\n\
-\tDate: {pred_date}"
+    \tStock: {}\n\
+    \tPrice: {}\n\
+    \tLast Observed: {}\n\
+    \tHorizon: {} bars\n\
+    \tApprox. Date: {}",
+        ticker,
+        rounded,
+        end.format(DATE_FORMAT).expect("Failed to format end date"),
+        HORIZON,
+        approx_date
+            .format(DATE_FORMAT)
+            .expect("Failed to format approx date")
     );
 }

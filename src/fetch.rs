@@ -1,4 +1,4 @@
-use crate::utils::{parse_date, yahoo};
+use crate::utils::{DATE_FORMAT, parse_date, yahoo};
 use csv::Trim;
 use mirada_lib::data::{DataKey, StockData};
 use mirada_lib::database::Database;
@@ -62,7 +62,11 @@ pub fn fetch_data(
     interval: String,
     ticker: String,
 ) -> StockData {
-    log::info!("Sending request for '{ticker}' from {start} to {end} with interval {interval}...");
+    log::info!(
+        "Sending request for '{ticker}' from {} to {} with interval {interval}...",
+        start.format(DATE_FORMAT).expect("Failed to format start"),
+        end.format(DATE_FORMAT).expect("Failed to format end")
+    );
     let response = yahoo
         .get_quote_history_interval(&ticker, start, end, &interval)
         .expect("Failed to get quote history");
@@ -88,8 +92,8 @@ pub fn fetch_data(
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct Record {
-    ticker: String,
-    start: String,
-    end: String,
+pub struct Record {
+    pub ticker: String,
+    pub start: String,
+    pub end: String,
 }

@@ -31,6 +31,8 @@ pub enum Command {
     Predict(PredictArgs),
     /// Dumps the given data kind out to the console.
     Dump(DumpArgs),
+    /// CSV generation utilities.
+    Csv(CsvArgs),
 }
 
 /// Arguments for the fetch command.
@@ -114,4 +116,53 @@ pub struct PredictArgs {
 pub struct DumpArgs {
     /// The data kind to dump. Available: 'database'.
     pub kind: String,
+}
+
+/// Arguments for the csv command.
+#[derive(Args)]
+pub struct CsvArgs {
+    /// The subcommand to the csv command.
+    #[command(subcommand)]
+    pub command: CsvCommand,
+}
+
+/// The csv subcommand.
+#[derive(Subcommand)]
+pub enum CsvCommand {
+    /// Generate CSV data to use as input for the `fetch -f` command.
+    Fetch(CsvFetchArgs),
+    /// Generate CSV data to use as input datasets for the `train` command.
+    Train(CsvTrainArgs),
+}
+
+/// Arguments for the csv fetch command.
+#[derive(Args)]
+pub struct CsvFetchArgs {
+    /// The output file to write to. Use `stdout` to write to the console.
+    #[arg(short = 'o', long = "out", default_value = "stdout")]
+    pub out: String,
+    /// The start date to use for generation.
+    pub start: String,
+    /// The end date to use for generation.
+    pub end: String,
+    /// The interval to use for generation in days.
+    pub interval: u64,
+    /// The tickers to use for generation.
+    #[arg(value_delimiter = ',', required = true)]
+    pub tickers: Vec<String>,
+}
+
+/// Arguments for the csv train command.
+#[derive(Args)]
+pub struct CsvTrainArgs {
+    /// The first output file to write to. Use `stdout` to write to the console.
+    #[arg(short = '1', long = "out1", default_value = "stdout")]
+    pub out1: String,
+    /// The second output file to write to. Use `stdout` to write to the console.
+    #[arg(short = '2', long = "out2", default_value = "stdout")]
+    pub out2: String,
+    /// The percentage of the input file to write to the first output file.
+    pub percent: f32,
+    /// The path to the input file to process.
+    pub input: String,
 }

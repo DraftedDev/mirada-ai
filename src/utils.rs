@@ -2,25 +2,15 @@ use serde::Deserialize;
 use std::fmt::Debug;
 use std::str::FromStr;
 use std::time::Duration;
-use yahoo_finance_api::time::{Date, Month};
+use time::format_description::BorrowedFormatItem;
+use yahoo_finance_api::time::Date;
 use yahoo_finance_api::{YahooConnector, YahooConnectorBuilder};
 
-pub fn parse_date(input: &str) -> Date {
-    let days = &input[0..2];
-    let month = &input[3..5];
-    let year = &input[6..10];
+pub const DATE_FORMAT: &[BorrowedFormatItem] =
+    time::macros::format_description!("[day].[month].[year]");
 
-    Date::from_calendar_date(
-        year.parse().expect("Failed to parse year"),
-        Month::try_from(
-            month
-                .parse::<u8>()
-                .expect("Failed to parse month into integer"),
-        )
-        .expect("Failed to parse month"),
-        days.parse().expect("Failed to parse day"),
-    )
-    .expect("Failed to parse date")
+pub fn parse_date(input: &str) -> Date {
+    Date::parse(input, DATE_FORMAT).expect("Failed to parse date")
 }
 
 pub fn split_tags<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
@@ -29,6 +19,14 @@ where
 {
     let s: String = Deserialize::deserialize(deserializer)?;
     Ok(s.split(';').map(|item| item.to_string()).collect())
+}
+
+pub fn join_tags<S>(tags: &Vec<String>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let s = tags.join(";");
+    serializer.serialize_str(&s)
 }
 
 pub fn interval_to_duration(interval: &str) -> Option<Duration> {
@@ -53,6 +51,12 @@ where
     T::Err: Debug,
 {
     std::env::var(var)
-        .map(|s| T::from_str(&s).expect(&format!("Failed to parse env var {var}")))
+        .map(|s| T::from_str(&s).unwrap_or_else(|_| panic!("Failed to parse env var {var}")))
         .unwrap_or(default)
+}
+
+pub fn round_to(value: f32, precision: i32) -> f32 {
+    let factor = 10.0_f32.powi(precision);
+
+    (value * factor).round() / factor
 }

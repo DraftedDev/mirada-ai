@@ -84,10 +84,13 @@ fn build_dataset(mut reader: Reader<File>) -> StockDataset {
 }
 
 #[derive(Serialize, Deserialize)]
-struct Record {
-    ticker: String,
-    start: String,
-    end: String,
-    #[serde(deserialize_with = "crate::utils::split_tags")]
-    others: Vec<String>,
+pub struct Record {
+    pub ticker: String,
+    pub start: String,
+    pub end: String,
+    #[serde(
+        deserialize_with = "crate::utils::split_tags",
+        serialize_with = "crate::utils::join_tags"
+    )]
+    pub others: Vec<String>,
 }

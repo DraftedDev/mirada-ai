@@ -21,3 +21,4 @@ mirada-lib = { path = "mirada-lib", features = ["cuda"] }
 csv = "1.4.0"
 log = { workspace = true }
 serde = { workspace = true }
+time = { workspace = true, features = ["macros"] }

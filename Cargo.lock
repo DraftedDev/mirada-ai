@@ -3135,6 +3135,7 @@ dependencies = [
  "log",
  "mirada-lib",
  "serde",
+ "time",
  "yahoo_finance_api",
 ]
 

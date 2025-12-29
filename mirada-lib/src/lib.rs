@@ -5,6 +5,7 @@ pub mod dataset;
 pub mod inference;
 pub mod math;
 pub mod model;
+pub mod residual;
 pub mod training;
 
 #[cfg(feature = "cuda")]

@@ -4,7 +4,6 @@ use crate::residual::{ResidualBlock, ResidualBlockConfig};
 use burn::Tensor;
 use burn::config::Config;
 use burn::module::Module;
-use burn::nn::attention::{MhaInput, MultiHeadAttention, MultiHeadAttentionConfig};
 use burn::nn::loss::{MseLoss, Reduction};
 use burn::nn::{Dropout, DropoutConfig, Gelu, LayerNorm, LayerNormConfig, Linear, LinearConfig};
 use burn::prelude::Backend;
@@ -14,19 +13,13 @@ use burn::train::{RegressionOutput, TrainOutput, TrainStep, ValidStep};
 use std::path::Path;
 
 /// The core machine learning model for Mirada AI.
-///
-/// It uses following layer architecture to predict:
-/// 1. Input Linear Layer
 #[derive(Debug, Module)]
 pub struct Model<B: Backend> {
     input_linear: Linear<B>,
-    input_activation: Gelu,
     input_norm: LayerNorm<B>,
+    input_activation: Gelu,
 
     residual_blocks: Vec<ResidualBlock<B>>,
-
-    attention: MultiHeadAttention<B>,
-    attention_norm: LayerNorm<B>,
 
     mlp_linear: Linear<B>,
     mlp_activation: Gelu,
@@ -38,19 +31,12 @@ pub struct Model<B: Backend> {
 impl<B: Backend> Model<B> {
     pub fn forward(&self, input: Tensor<B, 2>) -> Tensor<B, 2> {
         let mut x = self.input_linear.forward(input);
-        x = self.input_activation.forward(x);
         x = self.input_norm.forward(x);
+        x = self.input_activation.forward(x);
 
         for block in &self.residual_blocks {
             x = block.forward(x);
         }
-
-        let x_seq = x.clone().unsqueeze_dim::<3>(1);
-
-        // TODO: make attention better (ask chat gpt)
-        let attn_out = self.attention.forward(MhaInput::self_attn(x_seq));
-        let x_attn = attn_out.context.squeeze_dim::<2>(1);
-        x = self.attention_norm.forward(x_attn + x);
 
         x = self.mlp_linear.forward(x);
         x = self.mlp_activation.forward(x);
@@ -105,8 +91,6 @@ pub struct ModelConfig {
     pub hidden_dim: usize,
     #[config(default = 5)]
     pub residual_blocks: usize,
-    #[config(default = 8)]
-    pub n_heads: usize,
     #[config(default = 0.1)]
     pub dropout: f64,
 }
@@ -126,8 +110,6 @@ impl ModelConfig {
                 .init(device);
                 self.residual_blocks
             ],
-            attention: MultiHeadAttentionConfig::new(self.hidden_dim, self.n_heads).init(device),
-            attention_norm: LayerNormConfig::new(self.hidden_dim).init(device),
             mlp_linear: LinearConfig::new(self.hidden_dim, self.hidden_dim).init(device),
             mlp_activation: Gelu::new(),
             mlp_dropout: DropoutConfig::new(self.dropout).init(),

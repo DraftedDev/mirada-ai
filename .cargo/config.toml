@@ -1,5 +1,6 @@
 [profile.dev]
 incremental = true
+opt-level = "s"
 rustflags = ["-Zthreads=0"]
 
 [profile.release]

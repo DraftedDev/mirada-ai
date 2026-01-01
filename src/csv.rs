@@ -49,7 +49,7 @@ pub fn train(out1: String, out2: String, percent: f32, input: String) {
         let record: fetch::Record = result.expect("Error parsing record");
         groups
             .entry((record.start, record.end))
-            .or_insert(Vec::new())
+            .or_default()
             .push(record.ticker);
     }
 

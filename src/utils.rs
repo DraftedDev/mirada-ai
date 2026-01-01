@@ -21,7 +21,7 @@ where
     Ok(s.split(';').map(|item| item.to_string()).collect())
 }
 
-pub fn join_tags<S>(tags: &Vec<String>, serializer: S) -> Result<S::Ok, S::Error>
+pub fn join_tags<S>(tags: &[String], serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {

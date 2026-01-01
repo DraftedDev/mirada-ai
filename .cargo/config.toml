@@ -1,7 +1,6 @@
 [profile.dev]
 incremental = true
-opt-level = "s"
-rustflags = ["-Zthreads=0"]
+rustflags = ["-Zthreads=0", "-Znext-solver"]
 
 [profile.release]
 lto = "thin"

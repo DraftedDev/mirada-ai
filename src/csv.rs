@@ -11,19 +11,17 @@ pub fn fetch(output: String, start: String, end: String, interval: u64, tickers:
     let interval = Duration::from_hours(24 * interval);
 
     let mut rows = Vec::with_capacity(tickers.len());
-    let mut current_date = start;
+    let mut current_start = start;
 
     log::info!("Generating rows...");
 
-    while current_date <= end {
-        current_date += interval;
+    while current_start < end {
+        let current_end = (current_start + interval).min(end);
 
         for ticker in &tickers {
-            let current_end = current_date + interval;
-
             rows.push(fetch::Record {
                 ticker: ticker.clone(),
-                start: current_date
+                start: current_start
                     .format(DATE_FORMAT)
                     .expect("Failed to format start date"),
                 end: current_end
@@ -31,6 +29,8 @@ pub fn fetch(output: String, start: String, end: String, interval: u64, tickers:
                     .expect("Failed to format end date"),
             });
         }
+
+        current_start = current_end;
     }
 
     log::info!("Writing {} rows to '{output}'...", rows.len());

@@ -5,7 +5,9 @@ use burn::Tensor;
 use burn::config::Config;
 use burn::module::Module;
 use burn::nn::loss::{MseLoss, Reduction};
-use burn::nn::{Dropout, DropoutConfig, Gelu, LayerNorm, LayerNormConfig, Linear, LinearConfig};
+use burn::nn::{
+    Dropout, DropoutConfig, Gelu, LayerNorm, LayerNormConfig, Linear, LinearConfig, Sigmoid,
+};
 use burn::prelude::Backend;
 use burn::record::CompactRecorder;
 use burn::tensor::backend::AutodiffBackend;
@@ -15,6 +17,8 @@ use std::path::Path;
 /// The core machine learning model for Mirada AI.
 #[derive(Debug, Module)]
 pub struct Model<B: Backend> {
+    feature_gate: Linear<B>,
+    sigmoid: Sigmoid,
     input_linear: Linear<B>,
     input_norm: LayerNorm<B>,
     input_activation: Gelu,
@@ -25,24 +29,48 @@ pub struct Model<B: Backend> {
     mlp_activation: Gelu,
     mlp_dropout: Dropout,
 
+    head_norm: LayerNorm<B>,
     head: Linear<B>,
 }
 
 impl<B: Backend> Model<B> {
     pub fn forward(&self, input: Tensor<B, 2>) -> Tensor<B, 2> {
-        let mut x = self.input_linear.forward(input);
-        x = self.input_norm.forward(x);
-        x = self.input_activation.forward(x);
+        // Feature gating
+        let mut x = {
+            let gate = self.feature_gate.forward(input.clone());
 
+            self.sigmoid.forward(gate) * input
+        };
+
+        // Input linear + norm + activation
+        x = {
+            let lin = self.input_linear.forward(x);
+            let norm = self.input_norm.forward(lin);
+
+            self.input_activation.forward(norm)
+        };
+
+        // Residual blocks
         for block in &self.residual_blocks {
             x = block.forward(x);
         }
 
-        x = self.mlp_linear.forward(x);
-        x = self.mlp_activation.forward(x);
-        x = self.mlp_dropout.forward(x);
+        // MLP Linear + activation + dropout + residual
+        x = {
+            let mlp_residual = x.clone();
 
-        self.head.forward(x)
+            x = self.mlp_linear.forward(x);
+            x = self.mlp_activation.forward(x);
+            x = self.mlp_dropout.forward(x);
+
+            x + mlp_residual
+        };
+
+        // Head Norm + Linear
+        {
+            x = self.head_norm.forward(x);
+            self.head.forward(x)
+        }
     }
 
     pub fn forward_regression(
@@ -98,6 +126,8 @@ pub struct ModelConfig {
 impl ModelConfig {
     pub fn init<B: Backend>(&self, device: &B::Device) -> Model<B> {
         Model {
+            feature_gate: LinearConfig::new(TOTAL_FEATURE_SIZE, self.hidden_dim).init(device),
+            sigmoid: Sigmoid::new(),
             input_linear: LinearConfig::new(TOTAL_FEATURE_SIZE, self.hidden_dim).init(device),
             input_activation: Gelu::new(),
             input_norm: LayerNormConfig::new(self.hidden_dim).init(device),
@@ -113,6 +143,7 @@ impl ModelConfig {
             mlp_linear: LinearConfig::new(self.hidden_dim, self.hidden_dim).init(device),
             mlp_activation: Gelu::new(),
             mlp_dropout: DropoutConfig::new(self.dropout).init(),
+            head_norm: LayerNormConfig::new(self.hidden_dim).init(device),
             head: LinearConfig::new(self.hidden_dim, 1).init(device),
         }
     }

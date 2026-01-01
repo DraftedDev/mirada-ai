@@ -15,14 +15,16 @@ pub struct ResidualBlock<B: Backend> {
 
 impl<B: Backend> ResidualBlock<B> {
     pub fn forward<const D: usize>(&self, input: Tensor<B, D>) -> Tensor<B, D> {
-        let mut x = self.linear1.forward(input.clone());
+        let input_norm = self.norm.forward(input.clone());
+
+        let mut x = self.linear1.forward(input_norm);
 
         x = self.activation.forward(x);
         x = self.linear2.forward(x);
         x = self.dropout.forward(x);
 
-        let x = x + input;
-        self.norm.forward(x)
+        // Residual connection
+        x + input
     }
 }
 

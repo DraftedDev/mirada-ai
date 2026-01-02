@@ -126,11 +126,13 @@ pub struct ModelConfig {
 impl ModelConfig {
     pub fn init<B: Backend>(&self, device: &B::Device) -> Model<B> {
         Model {
-            feature_gate: LinearConfig::new(TOTAL_FEATURE_SIZE, self.hidden_dim).init(device),
+            feature_gate: LinearConfig::new(TOTAL_FEATURE_SIZE, TOTAL_FEATURE_SIZE).init(device),
             sigmoid: Sigmoid::new(),
             input_linear: LinearConfig::new(TOTAL_FEATURE_SIZE, self.hidden_dim).init(device),
             input_activation: Gelu::new(),
-            input_norm: LayerNormConfig::new(self.hidden_dim).init(device),
+            input_norm: LayerNormConfig::new(self.hidden_dim)
+                .with_epsilon(1e-5)
+                .init(device),
             residual_blocks: vec![
                 ResidualBlockConfig::new(
                     self.hidden_dim,

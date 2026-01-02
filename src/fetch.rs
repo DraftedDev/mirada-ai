@@ -73,6 +73,8 @@ pub fn fetch_data(
 
     let quotes = response.quotes().expect("Failed to get response result");
 
+    assert!(!quotes.is_empty(), "Got empty response for '{ticker}'");
+
     log::info!("Collecting request data...");
     let mut opens = Vec::with_capacity(quotes.len());
     let mut closes = Vec::with_capacity(quotes.len());
@@ -82,10 +84,23 @@ pub fn fetch_data(
 
     for q in quotes {
         opens.push(q.open as f32);
-        closes.push(q.close as f32);
+        closes.push(q.adjclose as f32);
         volumes.push(q.volume as f32);
         highs.push(q.high as f32);
         lows.push(q.low as f32);
+
+        assert!(
+            q.open != 0.0
+                && q.adjclose != 0.0
+                && q.volume != 0
+                && q.high != 0.0
+                && q.low != 0.0
+                && !q.open.is_nan()
+                && !q.adjclose.is_nan()
+                && !q.high.is_nan()
+                && !q.low.is_nan(),
+            "Got invalid response for '{ticker}'"
+        );
     }
 
     StockData::new(opens, closes, volumes, highs, lows)

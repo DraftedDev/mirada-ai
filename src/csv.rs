@@ -16,7 +16,14 @@ pub fn fetch(output: String, start: String, end: String, interval: u64, tickers:
     log::info!("Generating rows...");
 
     while current_start < end {
-        let current_end = (current_start + interval).min(end);
+        let current_end = current_start + interval;
+
+        if current_end > end {
+            log::warn!(
+                "Item from {current_start} to {current_end} ignored, due to too few data points."
+            );
+            break;
+        }
 
         for ticker in &tickers {
             rows.push(fetch::Record {

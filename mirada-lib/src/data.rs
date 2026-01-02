@@ -78,9 +78,10 @@ impl StockData {
         let norm_features = normalize(&raw_features, WINDOW_Z, WINDOW_SCALE, CLIP);
 
         log::info!("Finalizing features and targets data...");
+
         // Remove last `horizon` rows from features to match target length
-        let aligned_features: Vec<[f32; FEATURE_SIZE]> =
-            norm_features[..norm_features.len() - HORIZON].to_vec();
+        let slice_len = norm_features.len().saturating_sub(HORIZON);
+        let aligned_features = norm_features[..slice_len].to_vec();
 
         let flat_features: Vec<f32> = aligned_features
             .iter()
@@ -109,6 +110,12 @@ impl StockData {
             "Can only process {OTHER_STOCKS} other stocks"
         );
 
+        if self.features.shape[0] == 0 {
+            panic!("Stock features cannot have zero size");
+        } else if others.iter().any(|d| d.features.shape[0] == 0) {
+            panic!("Other stocks features cannot have zero size");
+        }
+
         let mut merged = Vec::with_capacity(others.len() + 1);
 
         let other_features = others
@@ -125,6 +132,11 @@ impl StockData {
 
         merged.push(self.features.to_tensor(device));
         merged.extend(other_features);
+
+        assert!(
+            merged.iter().all(|t| t.dims()[1] > 0),
+            "Attempted to merge a tensor with zero size"
+        );
 
         Self {
             features: SerdeTensor::from_tensor(Tensor::cat(merged, 1)),

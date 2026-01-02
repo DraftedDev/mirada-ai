@@ -138,10 +138,17 @@ pub fn process(
     highs: Vec<f32>,
     lows: Vec<f32>,
 ) -> Vec<[f32; FEATURE_SIZE]> {
+    const SKIPPED_TIMESTEPS: usize = 30;
+
     let n = closes.len();
     assert!(
         opens.len() == n && volumes.len() == n && highs.len() == n && lows.len() == n,
         "Input vectors must have the same length"
+    );
+
+    assert!(
+        n > SKIPPED_TIMESTEPS,
+        "Not enough timesteps to process. Need at least {SKIPPED_TIMESTEPS}, but got {n}."
     );
 
     // Compute all feature vectors (each helper returns a Vec<f32> length n)
@@ -152,14 +159,14 @@ pub fn process(
     let price_volume_pressure = compute_price_volume_pressure(&log_returns, &volume_changes);
 
     let rolling_volatility_10 = compute_rolling_std(&log_returns, 10);
-    let volatility_ratio = compute_volatility_ratio(&log_returns, 10, 50);
+    let volatility_ratio = compute_volatility_ratio(&log_returns, 10, 30);
 
     let high_low_ranges = compute_high_low_range(&highs, &lows, &closes);
     let open_close_returns = compute_open_close_return(&opens, &closes);
 
     let sma_dist_10 = compute_sma_distance(&closes, 10);
     let ema_dist_20 = compute_ema_distance(&closes, 20);
-    let price_vs_long_sma = compute_sma_distance(&closes, 50);
+    let price_vs_long_sma = compute_sma_distance(&closes, 20);
 
     let momentum_10 = compute_momentum(&closes, 10);
     let true_ranges = compute_true_range(&highs, &lows, &closes);

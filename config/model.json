@@ -1,6 +1,5 @@
 {
   "hidden_dim": 128,
   "residual_blocks": 5,
-  "n_heads": 8,
   "dropout": 0.1
 }

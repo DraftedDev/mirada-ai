@@ -8,7 +8,7 @@ use crate::consts::feature_index::{
     MOM_IDX, OC_RET_IDX, PR_VOL_PRE_IDX, PR_VS_LONG_SMA_IDX, ROLL_VOLAT_IDX, RSI_IDX, SMA_DIST_IDX,
     TRUE_RANGES_IDX, VOL_CHANGE_IDX, VOL_U_SC_IDX, VOLAT_RAT_IDX,
 };
-use crate::consts::{CLIP, EPS, FEATURE_SIZE, WINDOW_SCALE, WINDOW_Z};
+use crate::consts::{CLIP, EPS, FEATURE_SIZE, SKIPPED_TIMESTEPS, WINDOW_SCALE, WINDOW_Z};
 
 /// Generate log return targets for a single stock
 ///
@@ -37,22 +37,22 @@ pub fn generate_targets(closes: &[f32], horizon: usize) -> Vec<f32> {
 /// Processes the input data into:
 /// - log returns
 /// - volume changes
-/// - volume z score (20)
+/// - volume z score ([VOL_Z_SC_WINDOW])
 /// - price volume pressure
-/// - rolling volatility (10)
-/// - volatility ratio (10, 50)
+/// - rolling volatility ([ROLL_VOLAT_WINDOW])
+/// - volatility ratio ([VOLAT_RAT_SHORT], [VOLAT_RAT_LONG])
 /// - high low ranges
 /// - open close returns
-/// - sma distance (10)
-/// - ema distance (20)
-/// - price vs long sma (50)
-/// - momentum (10)
+/// - sma distance ([SMA_DIST_WINDOW])
+/// - ema distance ([EMA_DIST_SPAN])
+/// - price vs long sma ([PR_VS_LONG_SMA_WINDOW])
+/// - momentum ([MOM_PERIOD])
 /// - true ranges
-/// - atr (14)
-/// - atr ratio (14)
-/// - bollinger band distance (20)
-/// - rsi (14)
-/// - macd histogram (12, 16, 9)
+/// - atr ([ATR_PERIOD])
+/// - atr ratio
+/// - bollinger band distance ([BOLL_BAND_WINDOW], [BOLL_BAND_NUM_STD])
+/// - rsi ([RSI_PERIOD])
+/// - macd histogram ([MACD_HIST_SHORT], [MACD_HIST_LONG], [MACD_HIST_SIGNAL])
 ///
 /// and stores them in a vector of 10-float arrays.
 pub fn process(
@@ -62,8 +62,6 @@ pub fn process(
     highs: Vec<f32>,
     lows: Vec<f32>,
 ) -> Vec<[f32; FEATURE_SIZE]> {
-    const SKIPPED_TIMESTEPS: usize = 30;
-
     let n = closes.len();
     assert!(
         opens.len() == n && volumes.len() == n && highs.len() == n && lows.len() == n,
@@ -79,27 +77,27 @@ pub fn process(
     let log_returns = compute_log_returns(&closes);
 
     let volume_changes = compute_volume_change(&volumes);
-    let volume_z_score_20 = compute_volume_z_score(&volumes, VOL_Z_SC_WINDOW);
+    let volume_z_score = compute_volume_z_score(&volumes, VOL_Z_SC_WINDOW);
     let price_volume_pressure = compute_price_volume_pressure(&log_returns, &volume_changes);
 
-    let rolling_volatility_10 = compute_rolling_std(&log_returns, ROLL_VOLAT_WINDOW);
+    let rolling_volatility = compute_rolling_std(&log_returns, ROLL_VOLAT_WINDOW);
     let volatility_ratio = compute_volatility_ratio(&log_returns, VOLAT_RAT_SHORT, VOLAT_RAT_LONG);
 
     let high_low_ranges = compute_high_low_range(&highs, &lows, &closes);
     let open_close_returns = compute_open_close_return(&opens, &closes);
 
-    let sma_dist_10 = compute_sma_distance(&closes, SMA_DIST_WINDOW);
-    let ema_dist_20 = compute_ema_distance(&closes, EMA_DIST_SPAN);
+    let sma_dist = compute_sma_distance(&closes, SMA_DIST_WINDOW);
+    let ema_dist = compute_ema_distance(&closes, EMA_DIST_SPAN);
     let price_vs_long_sma = compute_sma_distance(&closes, PR_VS_LONG_SMA_WINDOW);
 
-    let momentum_10 = compute_momentum(&closes, MOM_PERIOD);
+    let momentum = compute_momentum(&closes, MOM_PERIOD);
     let true_ranges = compute_true_range(&highs, &lows, &closes);
 
-    let atr_14 = compute_atr(&true_ranges, ATR_PERIOD);
-    let atr_ratio = compute_atr_ratio(&atr_14, &closes);
+    let atr = compute_atr(&true_ranges, ATR_PERIOD);
+    let atr_ratio = compute_atr_ratio(&atr, &closes);
 
-    let bollinger_20 = compute_bollinger_distance(&closes, BOLL_BAND_WINDOW, BOLL_BAND_NUM_STD);
-    let rsi_14 = compute_rsi(&closes, RSI_PERIOD);
+    let bollinger = compute_bollinger_distance(&closes, BOLL_BAND_WINDOW, BOLL_BAND_NUM_STD);
+    let rsi = compute_rsi(&closes, RSI_PERIOD);
     let macd_histogram =
         compute_macd_histogram(&closes, MACD_HIST_SHORT, MACD_HIST_LONG, MACD_HIST_SIGNAL);
 
@@ -109,21 +107,21 @@ pub fn process(
     for i in 0..n {
         out[i][LOG_RET_IDX] = log_returns[i];
         out[i][VOL_CHANGE_IDX] = volume_changes[i];
-        out[i][VOL_U_SC_IDX] = volume_z_score_20[i];
+        out[i][VOL_U_SC_IDX] = volume_z_score[i];
         out[i][PR_VS_LONG_SMA_IDX] = price_volume_pressure[i];
-        out[i][ROLL_VOLAT_IDX] = rolling_volatility_10[i];
+        out[i][ROLL_VOLAT_IDX] = rolling_volatility[i];
         out[i][VOLAT_RAT_IDX] = volatility_ratio[i];
         out[i][HL_RANGE_IDX] = high_low_ranges[i];
         out[i][OC_RET_IDX] = open_close_returns[i];
-        out[i][SMA_DIST_IDX] = sma_dist_10[i];
-        out[i][EMA_DIST_IDX] = ema_dist_20[i];
+        out[i][SMA_DIST_IDX] = sma_dist[i];
+        out[i][EMA_DIST_IDX] = ema_dist[i];
         out[i][PR_VS_LONG_SMA_IDX] = price_vs_long_sma[i];
-        out[i][MOM_IDX] = momentum_10[i];
+        out[i][MOM_IDX] = momentum[i];
         out[i][TRUE_RANGES_IDX] = true_ranges[i];
-        out[i][ATR_IDX] = atr_14[i];
+        out[i][ATR_IDX] = atr[i];
         out[i][ATR_RAT_IDX] = atr_ratio[i];
-        out[i][BOLL_BAND_IDX] = bollinger_20[i];
-        out[i][RSI_IDX] = rsi_14[i];
+        out[i][BOLL_BAND_IDX] = bollinger[i];
+        out[i][RSI_IDX] = rsi[i];
         out[i][MACD_HIST_IDX] = macd_histogram[i];
     }
 

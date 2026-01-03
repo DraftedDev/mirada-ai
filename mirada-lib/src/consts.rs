@@ -1,11 +1,14 @@
 pub const WINDOW_Z: usize = 90;
 pub const WINDOW_SCALE: usize = 252;
 pub const CLIP: f32 = 6.0;
-pub const HORIZON: usize = 3;
+pub const HORIZON: usize = 10;
 pub const FEATURE_SIZE: usize = 18;
 pub const OTHER_STOCKS: usize = 5;
 pub const TOTAL_FEATURE_SIZE: usize = FEATURE_SIZE * (OTHER_STOCKS + 1);
 pub const EPS: f32 = 1e-8;
+
+/// Skipped timesteps equal to the largest window of the [feature_args] constants.
+pub const SKIPPED_TIMESTEPS: usize = feature_args::VOLAT_RAT_LONG;
 
 pub mod feature_args {
     pub const VOL_Z_SC_WINDOW: usize = 20;

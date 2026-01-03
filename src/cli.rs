@@ -136,8 +136,10 @@ pub struct CsvFetchArgs {
     pub start: String,
     /// The end date to use for generation.
     pub end: String,
-    /// The interval to use for generation in days.
-    pub interval: u64,
+    /// The length for each sample in days.
+    pub length: u64,
+    /// The amount of days to shift the timestep until the end is reached.
+    pub shift: u64,
     /// The tickers to use for generation.
     #[arg(value_delimiter = ',', required = true)]
     pub tickers: Vec<String>,

@@ -60,9 +60,14 @@ fn main() {
         ),
         Command::Dump(args) => dump::dump(cli.database, args.kind),
         Command::Csv(args) => match args.command {
-            CsvCommand::Fetch(args) => {
-                csv::fetch(args.out, args.start, args.end, args.interval, args.tickers)
-            }
+            CsvCommand::Fetch(args) => csv::fetch(
+                args.out,
+                args.start,
+                args.end,
+                args.length,
+                args.shift,
+                args.tickers,
+            ),
             CsvCommand::Train(args) => csv::train(args.out1, args.out2, args.percent, args.input),
         },
     }

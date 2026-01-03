@@ -1,4 +1,4 @@
-use crate::utils::{DATE_FORMAT, parse_date, yahoo};
+use crate::utils::{DATE_FORMAT, parse_date, round_to, yahoo};
 use csv::Trim;
 use mirada_lib::data::{DataKey, StockData};
 use mirada_lib::database::Database;
@@ -21,22 +21,27 @@ pub fn fetch(
     if let Some(file) = file {
         log::info!("Reading input arguments from '{file}'...");
 
-        let mut reader = csv::ReaderBuilder::new()
+        let records = csv::ReaderBuilder::new()
             .trim(Trim::All)
             .buffer_capacity(1024)
             .from_path(file)
-            .expect("Failed to read CSV file");
+            .expect("Failed to read CSV file")
+            .deserialize()
+            .map(|rec| rec.expect("Failed to deserialize record"))
+            .collect::<Vec<Record>>();
 
-        for record in reader.deserialize::<Record>() {
-            let record =
-                record.expect("Failed to deserialize record with format `ticker,start,end`");
+        let length = records.len() as f32;
 
+        for (idx, record) in records.into_iter().enumerate() {
             let start = parse_date(&record.start).midnight().assume_utc();
             let end = parse_date(&record.end).midnight().assume_utc();
 
             let data = fetch_data(&yahoo, start, end, record.ticker.clone(), true);
 
             database.insert(DataKey::new(record.ticker, start, end), data);
+
+            let progress = round_to((idx as f32 / length) * 100.0, 2);
+            log::info!("Progress: {progress}%");
         }
     } else {
         let start = start.expect("'start' argument must be provided");

@@ -5,22 +5,35 @@ use serde::Serialize;
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-pub fn fetch(output: String, start: String, end: String, interval: u64, tickers: Vec<String>) {
+pub fn fetch(
+    output: String,
+    start: String,
+    end: String,
+    length: u64,
+    shift: u64,
+    tickers: Vec<String>,
+) {
     let start = parse_date(&start);
     let end = parse_date(&end);
-    let interval = Duration::from_hours(24 * interval);
+
+    let window = Duration::from_hours(24 * length);
+    let step = Duration::from_hours(24 * shift);
 
     let mut rows = Vec::with_capacity(tickers.len());
     let mut current_start = start;
 
-    log::info!("Generating rows...");
+    log::info!(
+        "Generating rows (window = {} days, shift = {} days)...",
+        length,
+        shift
+    );
 
     while current_start < end {
-        let current_end = current_start + interval;
+        let current_end = current_start + window;
 
         if current_end > end {
             log::warn!(
-                "Item from {current_start} to {current_end} ignored, due to too few data points."
+                "Item from {current_start} to {current_end} ignored, due to insufficient data."
             );
             break;
         }
@@ -37,7 +50,8 @@ pub fn fetch(output: String, start: String, end: String, interval: u64, tickers:
             });
         }
 
-        current_start = current_end;
+        // advance by shift and not by window length
+        current_start += step;
     }
 
     log::info!("Writing {} rows to '{output}'...", rows.len());

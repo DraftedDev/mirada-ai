@@ -1,4 +1,4 @@
-use crate::consts::{FEATURE_SIZE, HORIZON, OTHER_STOCKS, WINDOW_SCALE, WINDOW_Z};
+use crate::consts::{FEATURE_SIZE, HORIZON, OTHER_STOCKS};
 use crate::math::{generate_targets, normalize, process};
 use burn::Tensor;
 use burn::prelude::Backend;

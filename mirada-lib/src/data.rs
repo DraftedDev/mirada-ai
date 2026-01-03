@@ -65,11 +65,17 @@ impl StockData {
         volumes: Vec<f32>,
         highs: Vec<f32>,
         lows: Vec<f32>,
+        train: bool,
     ) -> Self {
         let last_close = *closes.last().expect("No closes provided");
 
-        log::info!("Generating targets data...");
-        let targets = generate_targets(&closes, HORIZON);
+        let targets_data = if train {
+            log::info!("Generating targets data...");
+            generate_targets(&closes, HORIZON)
+        } else {
+            log::info!("Using empty targets data...");
+            Vec::new()
+        };
 
         log::info!("Processing data into features...");
         let raw_features = process(opens, closes, volumes, highs, lows);
@@ -79,19 +85,26 @@ impl StockData {
 
         log::info!("Finalizing features and targets data...");
 
-        // Remove last `horizon` rows from features to match target length
-        let slice_len = norm_features.len().saturating_sub(HORIZON);
-        let aligned_features = norm_features[..slice_len].to_vec();
+        // Remove the last `HORIZON` rows during training to match target length.
+        let features = if train {
+            let slice_len = norm_features.len().saturating_sub(HORIZON);
 
-        let flat_features: Vec<f32> = aligned_features
-            .iter()
-            .flat_map(|x| x.iter())
-            .copied()
-            .collect();
+            norm_features[..slice_len].to_vec()
+        } else {
+            norm_features.to_vec()
+        };
+
+        let flat_features: Vec<f32> = features.iter().flat_map(|x| x.iter()).copied().collect();
+
+        let targets = if train {
+            SerdeTensor::new([features.len(), 1], targets_data)
+        } else {
+            SerdeTensor::none()
+        };
 
         Self {
-            features: SerdeTensor::new([aligned_features.len(), FEATURE_SIZE], flat_features),
-            targets: SerdeTensor::new([aligned_features.len(), 1], targets),
+            features: SerdeTensor::new([features.len(), FEATURE_SIZE], flat_features),
+            targets,
             last_close,
         }
     }
@@ -102,7 +115,7 @@ impl StockData {
 
     /// Merges the **features** from `other` into this [StockData].
     ///
-    /// Does not merge targets or last closes, since it wouldn't make sense to do so.
+    /// Does not merge targets, last closes or last rolling volatility, since it wouldn't make sense to do so.
     pub fn merge<B: Backend>(self, others: Vec<StockData>, device: &B::Device) -> Self {
         assert_eq!(
             others.len(),

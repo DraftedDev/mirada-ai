@@ -35,7 +35,14 @@ pub fn fetch(
             let start = parse_date(&record.start).midnight().assume_utc();
             let end = parse_date(&record.end).midnight().assume_utc();
 
-            let data = fetch_data(&yahoo, start, end, interval.clone(), record.ticker.clone());
+            let data = fetch_data(
+                &yahoo,
+                start,
+                end,
+                interval.clone(),
+                record.ticker.clone(),
+                true,
+            );
 
             database.insert(
                 DataKey::new(record.ticker, start, end, interval.clone()),
@@ -50,7 +57,7 @@ pub fn fetch(
         let start = parse_date(&start).midnight().assume_utc();
         let end = parse_date(&end).midnight().assume_utc();
 
-        let data = fetch_data(&yahoo, start, end, interval.clone(), ticker.clone());
+        let data = fetch_data(&yahoo, start, end, interval.clone(), ticker.clone(), true);
         database.insert(DataKey::new(ticker, start, end, interval), data);
     }
 }
@@ -61,6 +68,7 @@ pub fn fetch_data(
     end: OffsetDateTime,
     interval: String,
     ticker: String,
+    training: bool,
 ) -> StockData {
     log::info!(
         "Sending request for '{ticker}' from {} to {} with interval {interval}...",
@@ -103,7 +111,7 @@ pub fn fetch_data(
         );
     }
 
-    StockData::new(opens, closes, volumes, highs, lows)
+    StockData::new(opens, closes, volumes, highs, lows, training)
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

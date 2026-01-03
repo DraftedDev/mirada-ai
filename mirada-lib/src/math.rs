@@ -1,7 +1,14 @@
-use crate::data::FEATURE_SIZE;
-
-/// Small epsilon to avoid division by zero.
-const EPS: f32 = 1e-8;
+use crate::consts::feature_args::{
+    ATR_PERIOD, BOLL_BAND_NUM_STD, BOLL_BAND_WINDOW, EMA_DIST_SPAN, MACD_HIST_LONG,
+    MACD_HIST_SHORT, MACD_HIST_SIGNAL, MOM_PERIOD, PR_VS_LONG_SMA_WINDOW, ROLL_VOLAT_WINDOW,
+    RSI_PERIOD, SMA_DIST_WINDOW, VOL_Z_SC_WINDOW, VOLAT_RAT_LONG, VOLAT_RAT_SHORT,
+};
+use crate::consts::feature_index::{
+    ATR_IDX, ATR_RAT_IDX, BOLL_BAND_IDX, EMA_DIST_IDX, HL_RANGE_IDX, LOG_RET_IDX, MACD_HIST_IDX,
+    MOM_IDX, OC_RET_IDX, PR_VOL_PRE_IDX, PR_VS_LONG_SMA_IDX, ROLL_VOLAT_IDX, RSI_IDX, SMA_DIST_IDX,
+    TRUE_RANGES_IDX, VOL_CHANGE_IDX, VOL_U_SC_IDX, VOLAT_RAT_IDX,
+};
+use crate::consts::{CLIP, EPS, FEATURE_SIZE, WINDOW_SCALE, WINDOW_Z};
 
 /// Generate log return targets for a single stock
 ///
@@ -25,89 +32,6 @@ pub fn generate_targets(closes: &[f32], horizon: usize) -> Vec<f32> {
     }
 
     targets
-}
-
-/// Normalize the output from [process].
-///
-/// - log_return, volume_change, high_low_range, open_close_return,
-///   SMA distance, EMA distance, price vs long SMA, momentum,
-///   price x volume pressure, volume z-score -> rolling z-score
-/// - rolling_volatility, ATR, ATR ratio -> divide by long-term mean
-/// - Bollinger distance, RSI, MACD histogram -> leave as-is
-///
-/// # Arguments
-/// `window_z` - rolling window for z-score normalization (e.g. 60)
-/// `window_scale` - long-term mean window for volatility/ATR (e.g. 252)
-/// `clip` - clip z-score to +/- clip
-pub fn normalize(
-    features: &Vec<[f32; FEATURE_SIZE]>,
-    window_z: usize,
-    window_scale: usize,
-    clip: f32,
-) -> Vec<[f32; FEATURE_SIZE]> {
-    let n = features.len();
-    let mut out = vec![[0.0; FEATURE_SIZE]; n];
-
-    // Extract per-feature vectors
-    let mut log_return: Vec<f32> = features.iter().map(|x| x[0]).collect();
-    let mut volume_change: Vec<f32> = features.iter().map(|x| x[1]).collect();
-    let mut volume_z_score: Vec<f32> = features.iter().map(|x| x[2]).collect();
-    let mut price_volume_pressure: Vec<f32> = features.iter().map(|x| x[3]).collect();
-    let mut rolling_vol: Vec<f32> = features.iter().map(|x| x[4]).collect();
-    let volatility_ratio: Vec<f32> = features.iter().map(|x| x[5]).collect();
-    let mut hl_range: Vec<f32> = features.iter().map(|x| x[6]).collect();
-    let mut oc_return: Vec<f32> = features.iter().map(|x| x[7]).collect();
-    let mut sma_dist: Vec<f32> = features.iter().map(|x| x[8]).collect();
-    let mut ema_dist: Vec<f32> = features.iter().map(|x| x[9]).collect();
-    let mut price_vs_long_sma: Vec<f32> = features.iter().map(|x| x[10]).collect();
-    let mut momentum: Vec<f32> = features.iter().map(|x| x[11]).collect();
-    let true_ranges: Vec<f32> = features.iter().map(|x| x[12]).collect();
-    let mut atr: Vec<f32> = features.iter().map(|x| x[13]).collect();
-    let mut atr_ratio: Vec<f32> = features.iter().map(|x| x[14]).collect();
-    let bollinger: Vec<f32> = features.iter().map(|x| x[15]).collect(); // leave as-is
-    let rsi: Vec<f32> = features.iter().map(|x| x[16]).collect(); // leave as-is
-    let macd_hist: Vec<f32> = features.iter().map(|x| x[17]).collect(); // leave as-is
-
-    // Normalize rolling z-score features
-    log_return = rolling_z_score(&log_return, window_z, clip);
-    volume_change = rolling_z_score(&volume_change, window_z, clip);
-    volume_z_score = rolling_z_score(&volume_z_score, window_z, clip);
-    price_volume_pressure = rolling_z_score(&price_volume_pressure, window_z, clip);
-    hl_range = rolling_z_score(&hl_range, window_z, clip);
-    oc_return = rolling_z_score(&oc_return, window_z, clip);
-    sma_dist = rolling_z_score(&sma_dist, window_z, clip);
-    ema_dist = rolling_z_score(&ema_dist, window_z, clip);
-    price_vs_long_sma = rolling_z_score(&price_vs_long_sma, window_z, clip);
-    momentum = rolling_z_score(&momentum, window_z, clip);
-
-    // Normalize volatility / ATR
-    rolling_vol = divide_by_long_mean(&rolling_vol, window_scale);
-    atr = divide_by_long_mean(&atr, window_scale);
-    atr_ratio = divide_by_long_mean(&atr_ratio, window_scale);
-
-    // Combine back into output
-    for i in 0..n {
-        out[i][0] = log_return[i];
-        out[i][1] = volume_change[i];
-        out[i][2] = volume_z_score[i];
-        out[i][3] = price_volume_pressure[i];
-        out[i][4] = rolling_vol[i];
-        out[i][5] = volatility_ratio[i];
-        out[i][6] = hl_range[i];
-        out[i][7] = oc_return[i];
-        out[i][8] = sma_dist[i];
-        out[i][9] = ema_dist[i];
-        out[i][10] = price_vs_long_sma[i];
-        out[i][11] = momentum[i];
-        out[i][12] = true_ranges[i];
-        out[i][13] = atr[i];
-        out[i][14] = atr_ratio[i];
-        out[i][15] = bollinger[i];
-        out[i][16] = rsi[i];
-        out[i][17] = macd_hist[i];
-    }
-
-    out
 }
 
 /// Processes the input data into:
@@ -155,51 +79,125 @@ pub fn process(
     let log_returns = compute_log_returns(&closes);
 
     let volume_changes = compute_volume_change(&volumes);
-    let volume_z_score_20 = compute_volume_z_score(&volumes, 20);
+    let volume_z_score_20 = compute_volume_z_score(&volumes, VOL_Z_SC_WINDOW);
     let price_volume_pressure = compute_price_volume_pressure(&log_returns, &volume_changes);
 
-    let rolling_volatility_10 = compute_rolling_std(&log_returns, 10);
-    let volatility_ratio = compute_volatility_ratio(&log_returns, 10, 30);
+    let rolling_volatility_10 = compute_rolling_std(&log_returns, ROLL_VOLAT_WINDOW);
+    let volatility_ratio = compute_volatility_ratio(&log_returns, VOLAT_RAT_SHORT, VOLAT_RAT_LONG);
 
     let high_low_ranges = compute_high_low_range(&highs, &lows, &closes);
     let open_close_returns = compute_open_close_return(&opens, &closes);
 
-    let sma_dist_10 = compute_sma_distance(&closes, 10);
-    let ema_dist_20 = compute_ema_distance(&closes, 20);
-    let price_vs_long_sma = compute_sma_distance(&closes, 20);
+    let sma_dist_10 = compute_sma_distance(&closes, SMA_DIST_WINDOW);
+    let ema_dist_20 = compute_ema_distance(&closes, EMA_DIST_SPAN);
+    let price_vs_long_sma = compute_sma_distance(&closes, PR_VS_LONG_SMA_WINDOW);
 
-    let momentum_10 = compute_momentum(&closes, 10);
+    let momentum_10 = compute_momentum(&closes, MOM_PERIOD);
     let true_ranges = compute_true_range(&highs, &lows, &closes);
 
-    let atr_14 = compute_atr(&true_ranges, 14);
+    let atr_14 = compute_atr(&true_ranges, ATR_PERIOD);
     let atr_ratio = compute_atr_ratio(&atr_14, &closes);
 
-    let bollinger_20 = compute_bollinger_distance(&closes, 20, 2.0);
-    let rsi_14 = compute_rsi(&closes, 14);
-    let macd_histogram = compute_macd_histogram(&closes, 12, 16, 9);
+    let bollinger_20 = compute_bollinger_distance(&closes, BOLL_BAND_WINDOW, BOLL_BAND_NUM_STD);
+    let rsi_14 = compute_rsi(&closes, RSI_PERIOD);
+    let macd_histogram =
+        compute_macd_histogram(&closes, MACD_HIST_SHORT, MACD_HIST_LONG, MACD_HIST_SIGNAL);
 
     // Assemble final output
     let mut out = vec![[0.0_f32; FEATURE_SIZE]; n];
 
     for i in 0..n {
-        out[i][0] = log_returns[i];
-        out[i][1] = volume_changes[i];
-        out[i][2] = volume_z_score_20[i];
-        out[i][3] = price_volume_pressure[i];
-        out[i][4] = rolling_volatility_10[i];
-        out[i][5] = volatility_ratio[i];
-        out[i][6] = high_low_ranges[i];
-        out[i][7] = open_close_returns[i];
-        out[i][8] = sma_dist_10[i];
-        out[i][9] = ema_dist_20[i];
-        out[i][10] = price_vs_long_sma[i];
-        out[i][11] = momentum_10[i];
-        out[i][12] = true_ranges[i];
-        out[i][13] = atr_14[i];
-        out[i][14] = atr_ratio[i];
-        out[i][15] = bollinger_20[i];
-        out[i][16] = rsi_14[i];
-        out[i][17] = macd_histogram[i];
+        out[i][LOG_RET_IDX] = log_returns[i];
+        out[i][VOL_CHANGE_IDX] = volume_changes[i];
+        out[i][VOL_U_SC_IDX] = volume_z_score_20[i];
+        out[i][PR_VS_LONG_SMA_IDX] = price_volume_pressure[i];
+        out[i][ROLL_VOLAT_IDX] = rolling_volatility_10[i];
+        out[i][VOLAT_RAT_IDX] = volatility_ratio[i];
+        out[i][HL_RANGE_IDX] = high_low_ranges[i];
+        out[i][OC_RET_IDX] = open_close_returns[i];
+        out[i][SMA_DIST_IDX] = sma_dist_10[i];
+        out[i][EMA_DIST_IDX] = ema_dist_20[i];
+        out[i][PR_VS_LONG_SMA_IDX] = price_vs_long_sma[i];
+        out[i][MOM_IDX] = momentum_10[i];
+        out[i][TRUE_RANGES_IDX] = true_ranges[i];
+        out[i][ATR_IDX] = atr_14[i];
+        out[i][ATR_RAT_IDX] = atr_ratio[i];
+        out[i][BOLL_BAND_IDX] = bollinger_20[i];
+        out[i][RSI_IDX] = rsi_14[i];
+        out[i][MACD_HIST_IDX] = macd_histogram[i];
+    }
+
+    out
+}
+
+/// Normalize the output from [process].
+///
+/// - log_return, volume_change, high_low_range, open_close_return,
+///   SMA distance, EMA distance, price vs long SMA, momentum,
+///   price x volume pressure, volume z-score -> rolling z-score
+/// - rolling_volatility, ATR, ATR ratio -> divide by long-term mean
+/// - Bollinger distance, RSI, MACD histogram -> leave as-is
+pub fn normalize(features: &Vec<[f32; FEATURE_SIZE]>) -> Vec<[f32; FEATURE_SIZE]> {
+    let n = features.len();
+    let mut out = vec![[0.0; FEATURE_SIZE]; n];
+
+    // Extract per-feature vectors
+    let mut log_return: Vec<f32> = features.iter().map(|x| x[LOG_RET_IDX]).collect();
+    let mut volume_change: Vec<f32> = features.iter().map(|x| x[VOL_CHANGE_IDX]).collect();
+    let mut volume_z_score: Vec<f32> = features.iter().map(|x| x[VOL_U_SC_IDX]).collect();
+    let mut price_volume_pressure: Vec<f32> = features.iter().map(|x| x[PR_VOL_PRE_IDX]).collect();
+    let mut rolling_vol: Vec<f32> = features.iter().map(|x| x[ROLL_VOLAT_IDX]).collect();
+    let volatility_ratio: Vec<f32> = features.iter().map(|x| x[VOLAT_RAT_IDX]).collect();
+    let mut hl_range: Vec<f32> = features.iter().map(|x| x[HL_RANGE_IDX]).collect();
+    let mut oc_return: Vec<f32> = features.iter().map(|x| x[OC_RET_IDX]).collect();
+    let mut sma_dist: Vec<f32> = features.iter().map(|x| x[SMA_DIST_IDX]).collect();
+    let mut ema_dist: Vec<f32> = features.iter().map(|x| x[EMA_DIST_IDX]).collect();
+    let mut price_vs_long_sma: Vec<f32> = features.iter().map(|x| x[PR_VS_LONG_SMA_IDX]).collect();
+    let mut momentum: Vec<f32> = features.iter().map(|x| x[MOM_IDX]).collect();
+    let true_ranges: Vec<f32> = features.iter().map(|x| x[TRUE_RANGES_IDX]).collect();
+    let mut atr: Vec<f32> = features.iter().map(|x| x[ATR_IDX]).collect();
+    let mut atr_ratio: Vec<f32> = features.iter().map(|x| x[ATR_RAT_IDX]).collect();
+    let bollinger: Vec<f32> = features.iter().map(|x| x[BOLL_BAND_IDX]).collect(); // leave as-is
+    let rsi: Vec<f32> = features.iter().map(|x| x[RSI_IDX]).collect(); // leave as-is
+    let macd_hist: Vec<f32> = features.iter().map(|x| x[MACD_HIST_IDX]).collect(); // leave as-is
+
+    // Normalize rolling z-score features
+    log_return = rolling_z_score(&log_return, WINDOW_Z, CLIP);
+    volume_change = rolling_z_score(&volume_change, WINDOW_Z, CLIP);
+    volume_z_score = rolling_z_score(&volume_z_score, WINDOW_Z, CLIP);
+    price_volume_pressure = rolling_z_score(&price_volume_pressure, WINDOW_Z, CLIP);
+    hl_range = rolling_z_score(&hl_range, WINDOW_Z, CLIP);
+    oc_return = rolling_z_score(&oc_return, WINDOW_Z, CLIP);
+    sma_dist = rolling_z_score(&sma_dist, WINDOW_Z, CLIP);
+    ema_dist = rolling_z_score(&ema_dist, WINDOW_Z, CLIP);
+    price_vs_long_sma = rolling_z_score(&price_vs_long_sma, WINDOW_Z, CLIP);
+    momentum = rolling_z_score(&momentum, WINDOW_Z, CLIP);
+
+    // Normalize volatility / ATR
+    rolling_vol = divide_by_long_mean(&rolling_vol, WINDOW_SCALE);
+    atr = divide_by_long_mean(&atr, WINDOW_SCALE);
+    atr_ratio = divide_by_long_mean(&atr_ratio, WINDOW_SCALE);
+
+    // Combine back into output
+    for i in 0..n {
+        out[i][LOG_RET_IDX] = log_return[i];
+        out[i][VOL_CHANGE_IDX] = volume_change[i];
+        out[i][VOL_U_SC_IDX] = volume_z_score[i];
+        out[i][PR_VS_LONG_SMA_IDX] = price_volume_pressure[i];
+        out[i][ROLL_VOLAT_IDX] = rolling_vol[i];
+        out[i][VOLAT_RAT_IDX] = volatility_ratio[i];
+        out[i][HL_RANGE_IDX] = hl_range[i];
+        out[i][OC_RET_IDX] = oc_return[i];
+        out[i][SMA_DIST_IDX] = sma_dist[i];
+        out[i][EMA_DIST_IDX] = ema_dist[i];
+        out[i][PR_VS_LONG_SMA_IDX] = price_vs_long_sma[i];
+        out[i][MOM_IDX] = momentum[i];
+        out[i][TRUE_RANGES_IDX] = true_ranges[i];
+        out[i][ATR_IDX] = atr[i];
+        out[i][ATR_RAT_IDX] = atr_ratio[i];
+        out[i][BOLL_BAND_IDX] = bollinger[i];
+        out[i][RSI_IDX] = rsi[i];
+        out[i][MACD_HIST_IDX] = macd_hist[i];
     }
 
     out
@@ -213,7 +211,7 @@ fn rolling_z_score(values: &[f32], window: usize, clip: f32) -> Vec<f32> {
         let slice = &values[i - window..i];
         let mean = slice.iter().sum::<f32>() / window as f32;
         let var = slice.iter().map(|x| (x - mean).powi(2)).sum::<f32>() / window as f32;
-        let std = var.sqrt().max(1e-6);
+        let std = var.sqrt().max(EPS);
         out[i] = ((values[i] - mean) / std).clamp(-clip, clip);
     }
     out
@@ -225,7 +223,7 @@ fn divide_by_long_mean(values: &[f32], window: usize) -> Vec<f32> {
     let mut out = vec![0.0; n];
     for i in window..n {
         let mean = values[i - window..i].iter().sum::<f32>() / window as f32;
-        out[i] = values[i] / mean.max(1e-6);
+        out[i] = values[i] / mean.max(EPS);
     }
     out
 }

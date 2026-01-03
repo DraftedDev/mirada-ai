@@ -1,6 +1,6 @@
 use crate::fetch::fetch_data;
 use crate::utils::{DATE_FORMAT, interval_to_duration, parse_date, round_to, yahoo};
-use mirada_lib::data::HORIZON;
+use mirada_lib::consts::HORIZON;
 use mirada_lib::model::{Model, ModelConfig};
 use mirada_lib::{Backend, Device};
 use std::path::Path;

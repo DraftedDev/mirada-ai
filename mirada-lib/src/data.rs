@@ -1,3 +1,4 @@
+use crate::consts::{FEATURE_SIZE, HORIZON, OTHER_STOCKS, WINDOW_SCALE, WINDOW_Z};
 use crate::math::{generate_targets, normalize, process};
 use burn::Tensor;
 use burn::prelude::Backend;
@@ -5,14 +6,6 @@ use burn::tensor::{Shape, TensorData};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use time::OffsetDateTime;
-
-pub const WINDOW_Z: usize = 90;
-pub const WINDOW_SCALE: usize = 252;
-pub const CLIP: f32 = 6.0;
-pub const HORIZON: usize = 3;
-pub const FEATURE_SIZE: usize = 18;
-pub const OTHER_STOCKS: usize = 5;
-pub const TOTAL_FEATURE_SIZE: usize = FEATURE_SIZE * (OTHER_STOCKS + 1);
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DataKey {
@@ -81,7 +74,7 @@ impl StockData {
         let raw_features = process(opens, closes, volumes, highs, lows);
 
         log::info!("Normalizing features data...");
-        let norm_features = normalize(&raw_features, WINDOW_Z, WINDOW_SCALE, CLIP);
+        let norm_features = normalize(&raw_features);
 
         log::info!("Finalizing features and targets data...");
 

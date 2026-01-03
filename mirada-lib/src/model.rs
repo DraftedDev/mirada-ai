@@ -1,5 +1,5 @@
 use crate::batcher::DataBatch;
-use crate::data::TOTAL_FEATURE_SIZE;
+use crate::consts::TOTAL_FEATURE_SIZE;
 use crate::residual::{ResidualBlock, ResidualBlockConfig};
 use burn::Tensor;
 use burn::config::Config;

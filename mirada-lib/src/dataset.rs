@@ -1,4 +1,5 @@
-use crate::data::{DataKey, OTHER_STOCKS, StockData};
+use crate::consts::OTHER_STOCKS;
+use crate::data::{DataKey, StockData};
 use crate::database::Database;
 use burn::data::dataset::Dataset;
 use burn::prelude::Backend;

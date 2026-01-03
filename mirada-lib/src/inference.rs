@@ -1,4 +1,5 @@
-use crate::data::{StockData, TOTAL_FEATURE_SIZE};
+use crate::consts::TOTAL_FEATURE_SIZE;
+use crate::data::StockData;
 use crate::model::Model;
 use burn::prelude::Backend;
 

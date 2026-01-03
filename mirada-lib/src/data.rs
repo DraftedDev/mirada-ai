@@ -12,22 +12,11 @@ pub struct DataKey {
     ticker: String,
     start: OffsetDateTime,
     end: OffsetDateTime,
-    interval: String,
 }
 
 impl DataKey {
-    pub fn new(
-        ticker: String,
-        start: OffsetDateTime,
-        end: OffsetDateTime,
-        interval: String,
-    ) -> Self {
-        Self {
-            ticker,
-            start,
-            end,
-            interval,
-        }
+    pub fn new(ticker: String, start: OffsetDateTime, end: OffsetDateTime) -> Self {
+        Self { ticker, start, end }
     }
 }
 
@@ -35,11 +24,10 @@ impl Display for DataKey {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "ticker({}) start({}) end({}) interval({})",
+            "ticker({}) start({}) end({})",
             self.ticker,
             self.start.date(),
             self.end.date(),
-            self.interval
         )
     }
 }

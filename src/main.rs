@@ -35,7 +35,6 @@ fn main() {
         Command::Fetch(args) => fetch::fetch(
             cli.database,
             cli.timeout,
-            args.interval,
             args.start,
             args.end,
             args.ticker,
@@ -47,7 +46,6 @@ fn main() {
             args.valid_dataset,
             args.model,
             args.training,
-            args.interval,
             args.artifacts,
             args.cleanup,
         ),
@@ -55,7 +53,6 @@ fn main() {
             cli.timeout,
             args.artifacts,
             args.model,
-            args.interval,
             args.start,
             args.end,
             args.ticker,

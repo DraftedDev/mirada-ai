@@ -9,7 +9,6 @@ use yahoo_finance_api::time::OffsetDateTime;
 pub fn fetch(
     database: String,
     timeout: u64,
-    interval: String,
     start: Option<String>,
     end: Option<String>,
     ticker: Option<String>,
@@ -35,19 +34,9 @@ pub fn fetch(
             let start = parse_date(&record.start).midnight().assume_utc();
             let end = parse_date(&record.end).midnight().assume_utc();
 
-            let data = fetch_data(
-                &yahoo,
-                start,
-                end,
-                interval.clone(),
-                record.ticker.clone(),
-                true,
-            );
+            let data = fetch_data(&yahoo, start, end, record.ticker.clone(), true);
 
-            database.insert(
-                DataKey::new(record.ticker, start, end, interval.clone()),
-                data,
-            );
+            database.insert(DataKey::new(record.ticker, start, end), data);
         }
     } else {
         let start = start.expect("'start' argument must be provided");
@@ -57,8 +46,8 @@ pub fn fetch(
         let start = parse_date(&start).midnight().assume_utc();
         let end = parse_date(&end).midnight().assume_utc();
 
-        let data = fetch_data(&yahoo, start, end, interval.clone(), ticker.clone(), true);
-        database.insert(DataKey::new(ticker, start, end, interval), data);
+        let data = fetch_data(&yahoo, start, end, ticker.clone(), true);
+        database.insert(DataKey::new(ticker, start, end), data);
     }
 }
 
@@ -66,17 +55,16 @@ pub fn fetch_data(
     yahoo: &YahooConnector,
     start: OffsetDateTime,
     end: OffsetDateTime,
-    interval: String,
     ticker: String,
     training: bool,
 ) -> StockData {
     log::info!(
-        "Sending request for '{ticker}' from {} to {} with interval {interval}...",
+        "Sending request for '{ticker}' from {} to {}...",
         start.format(DATE_FORMAT).expect("Failed to format start"),
         end.format(DATE_FORMAT).expect("Failed to format end")
     );
     let response = yahoo
-        .get_quote_history_interval(&ticker, start, end, &interval)
+        .get_quote_history(&ticker, start, end)
         .expect("Failed to get quote history");
 
     let quotes = response.quotes().expect("Failed to get response result");

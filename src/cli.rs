@@ -38,9 +38,6 @@ pub enum Command {
 /// Arguments for the fetch command.
 #[derive(Args)]
 pub struct FetchArgs {
-    /// The interval for the request.
-    #[arg(short = 'i', long = "interval", default_value = "1d")]
-    pub interval: String,
     /// Whether to fetch multiple quotes using the given CSV file content as input args.
     #[arg(
         short = 'f',
@@ -73,9 +70,6 @@ pub struct TrainArgs {
         default_value = "./config/training.json"
     )]
     pub training: String,
-    /// The interval for the request.
-    #[arg(short = 'i', long = "interval", default_value = "1d")]
-    pub interval: String,
     /// The artifacts directory to use for training.
     #[arg(short = 'a', long = "artifacts", default_value = "./artifacts")]
     pub artifacts: String,
@@ -97,9 +91,6 @@ pub struct PredictArgs {
     /// The artifacts directory to use for training.
     #[arg(short = 'a', long = "artifacts", default_value = "./artifacts")]
     pub artifacts: String,
-    /// The interval for the request.
-    #[arg(short = 'i', long = "interval", default_value = "1d")]
-    pub interval: String,
     /// The start date to predict the data from in `dd-MM-YYYY` format.
     pub start: String,
     /// The end date to predict the data from in `dd-MM-YYYY` format.

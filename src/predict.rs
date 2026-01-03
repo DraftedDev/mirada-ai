@@ -1,15 +1,15 @@
 use crate::fetch::fetch_data;
-use crate::utils::{DATE_FORMAT, interval_to_duration, parse_date, round_to, yahoo};
+use crate::utils::{DATE_FORMAT, parse_date, round_to, yahoo};
 use mirada_lib::consts::HORIZON;
 use mirada_lib::model::{Model, ModelConfig};
 use mirada_lib::{Backend, Device};
 use std::path::Path;
+use time::Duration;
 
 pub fn predict(
     timeout: u64,
     artifacts: String,
     model_cfg: String,
-    interval: String,
     start: String,
     end: String,
     ticker: String,
@@ -19,8 +19,6 @@ pub fn predict(
 
     let start = parse_date(&start).midnight().assume_utc();
     let end = parse_date(&end).midnight().assume_utc();
-
-    let interval_dur = interval_to_duration(&interval).expect("Invalid interval");
 
     log::info!("Creating device...");
     let device = Device::default();
@@ -34,11 +32,11 @@ pub fn predict(
     let model = Model::<Backend>::load(model_cfg, model_path, &device);
 
     let data = {
-        let data = fetch_data(&yahoo, start, end, interval.clone(), ticker.clone(), false);
+        let data = fetch_data(&yahoo, start, end, ticker.clone(), false);
 
         let others = others
             .into_iter()
-            .map(|other| fetch_data(&yahoo, start, end, interval.clone(), other, false))
+            .map(|other| fetch_data(&yahoo, start, end, other, false))
             .collect::<Vec<_>>();
 
         data.merge::<Backend>(others, &device)
@@ -48,7 +46,7 @@ pub fn predict(
     let result = model.infer_price(data, &device);
     let rounded = round_to(result, 2);
 
-    let approx_date = end + interval_dur * HORIZON as u32;
+    let approx_date = end + Duration::days(1) * HORIZON as u32;
 
     log::info!(
         "### MODEL PREDICTION ###\n\

@@ -20,7 +20,6 @@ impl<B: AutodiffBackend> Model<B> {
         database: Database,
         train_set: StockDataset,
         valid_set: StockDataset,
-        interval: String,
         artifacts: impl AsRef<Path>,
         device: B::Device,
     ) {
@@ -28,7 +27,7 @@ impl<B: AutodiffBackend> Model<B> {
 
         B::seed(&device, config.seed);
 
-        let batcher = StockBatcher::new(database.clone(), interval);
+        let batcher = StockBatcher::new(database.clone());
 
         let train_dataloader = DataLoaderBuilder::new(batcher.clone())
             .batch_size(config.batch_size)

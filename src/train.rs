@@ -15,7 +15,6 @@ pub fn train(
     valid_dataset: String,
     model_cfg: String,
     training_cfg: String,
-    interval: String,
     artifacts: String,
     cleanup: bool,
 ) {
@@ -62,7 +61,6 @@ pub fn train(
         database,
         train_dataset,
         valid_dataset,
-        interval,
         artifacts,
         device,
     );

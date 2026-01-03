@@ -54,20 +54,14 @@ impl DataItem {
         self,
         database: &Database,
         device: &B::Device,
-        interval: String,
     ) -> Option<StockData> {
-        let stock = database.get(DataKey::new(
-            self.ticker,
-            self.start,
-            self.end,
-            interval.clone(),
-        ))?;
+        let stock = database.get(DataKey::new(self.ticker, self.start, self.end))?;
 
         let others = self
             .others
             .iter()
             .map(|other| {
-                let key = DataKey::new(other.clone(), self.start, self.end, interval.clone());
+                let key = DataKey::new(other.clone(), self.start, self.end);
                 database.get(key).expect("Failed to get other data")
             })
             .collect::<Vec<_>>();

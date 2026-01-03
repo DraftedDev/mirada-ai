@@ -7,12 +7,11 @@ use burn::prelude::Backend;
 #[derive(Clone)]
 pub struct StockBatcher {
     database: Database,
-    interval: String,
 }
 
 impl StockBatcher {
-    pub fn new(database: Database, interval: String) -> Self {
-        Self { database, interval }
+    pub fn new(database: Database) -> Self {
+        Self { database }
     }
 }
 
@@ -25,7 +24,7 @@ impl<B: Backend> Batcher<B, DataItem, DataBatch<B>> for StockBatcher {
 
         for item in items {
             let item = item
-                .to_stock_data::<B>(&self.database, device, self.interval.clone())
+                .to_stock_data::<B>(&self.database, device)
                 .expect("Failed to get stock data");
 
             let (feature, target) = item.into_tensors(device);

@@ -29,13 +29,6 @@ where
     serializer.serialize_str(&s)
 }
 
-pub fn interval_to_duration(interval: &str) -> Option<Duration> {
-    match interval {
-        "1d" => Some(Duration::from_hours(24)),
-        _ => None,
-    }
-}
-
 pub fn yahoo(timeout: u64) -> YahooConnector {
     log::info!("Connecting to the Yahoo Finance API...");
 

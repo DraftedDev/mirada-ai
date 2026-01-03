@@ -51,20 +51,20 @@ impl StockData {
         let last_close = *closes.last().expect("No closes provided");
 
         let targets_data = if train {
-            log::info!("Generating targets data...");
+            log::debug!("Generating targets data...");
             generate_targets(&closes, HORIZON)
         } else {
-            log::info!("Using empty targets data...");
+            log::debug!("Using empty targets data...");
             Vec::new()
         };
 
-        log::info!("Processing data into features...");
+        log::debug!("Processing data into features...");
         let raw_features = process(opens, closes, volumes, highs, lows);
 
-        log::info!("Normalizing features data...");
+        log::debug!("Normalizing features data...");
         let norm_features = normalize(&raw_features);
 
-        log::info!("Finalizing features and targets data...");
+        log::debug!("Finalizing features and targets data...");
 
         // Remove the last `HORIZON` rows during training to match target length.
         let features = if train {

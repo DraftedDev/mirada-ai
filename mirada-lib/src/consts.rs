@@ -8,17 +8,17 @@ pub const TOTAL_FEATURE_SIZE: usize = FEATURE_SIZE * (OTHER_STOCKS + 1);
 pub const EPS: f32 = 1e-8;
 
 /// Skipped timesteps equal to the largest window of the [feature_args] constants.
-pub const SKIPPED_TIMESTEPS: usize = feature_args::VOLAT_RAT_LONG;
+pub const SKIPPED_TIMESTEPS: usize = feature_args::VOL_Z_SC_WINDOW;
 
 pub mod feature_args {
-    pub const VOL_Z_SC_WINDOW: usize = 20;
-    pub const ROLL_VOLAT_WINDOW: usize = 10;
-    pub const VOLAT_RAT_SHORT: usize = 10;
+    pub const VOL_Z_SC_WINDOW: usize = 30;
+    pub const ROLL_VOLAT_WINDOW: usize = 15;
+    pub const VOLAT_RAT_SHORT: usize = 15;
     pub const VOLAT_RAT_LONG: usize = 30;
     pub const SMA_DIST_WINDOW: usize = 20;
     pub const EMA_DIST_SPAN: usize = 20;
     pub const PR_VS_LONG_SMA_WINDOW: usize = 20;
-    pub const MOM_PERIOD: usize = 10;
+    pub const MOM_PERIOD: usize = 12;
     pub const ATR_PERIOD: usize = 14;
     pub const BOLL_BAND_WINDOW: usize = 20;
     pub const BOLL_BAND_NUM_STD: f32 = 2.0;

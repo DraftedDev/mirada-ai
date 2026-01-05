@@ -115,9 +115,9 @@ impl<B: Backend> ValidStep<DataBatch<B>, RegressionOutput<B>> for Model<B> {
 
 #[derive(Debug, Config)]
 pub struct ModelConfig {
-    #[config(default = 128)]
+    #[config(default = 256)]
     pub hidden_dim: usize,
-    #[config(default = 5)]
+    #[config(default = 8)]
     pub residual_blocks: usize,
     #[config(default = 0.1)]
     pub dropout: f64,

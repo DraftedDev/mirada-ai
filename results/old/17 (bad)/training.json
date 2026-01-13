@@ -1,6 +1,6 @@
 {
-  "weight_decay": 0.0005,
-  "num_epochs": 200,
+  "weight_decay": 0.00075,
+  "num_epochs": 100,
   "batch_size": 16,
   "num_workers": 4,
   "seed": 12,

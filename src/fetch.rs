@@ -9,6 +9,7 @@ use yahoo_finance_api::time::OffsetDateTime;
 pub fn fetch(
     database: String,
     timeout: u64,
+    skip_if_exists: bool,
     start: Option<String>,
     end: Option<String>,
     ticker: Option<String>,
@@ -36,12 +37,18 @@ pub fn fetch(
             let start = parse_date(&record.start).midnight().assume_utc();
             let end = parse_date(&record.end).midnight().assume_utc();
 
-            let data = fetch_data(&yahoo, start, end, record.ticker.clone(), true);
-
-            database.insert(DataKey::new(record.ticker, start, end), data);
+            let key = DataKey::new(record.ticker.clone(), start, end);
 
             let progress = round_to((idx as f32 / length) * 100.0, 2);
             log::info!("Progress: {progress}%");
+
+            if skip_if_exists && database.get(key.clone()).is_some() {
+                log::warn!("Key {} already exists. Skipping...", key);
+                continue;
+            } else {
+                let data = fetch_data(&yahoo, start, end, record.ticker.clone(), true);
+                database.insert(key, data);
+            }
         }
     } else {
         let start = start.expect("'start' argument must be provided");

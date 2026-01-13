@@ -38,6 +38,9 @@ pub enum Command {
 /// Arguments for the fetch command.
 #[derive(Args)]
 pub struct FetchArgs {
+    /// Whether to skip database insertion if data key already exists.
+    #[arg(short = 's', long = "skip-if-exists", default_value = "true")]
+    pub skip_if_exists: bool,
     /// Whether to fetch multiple quotes using the given CSV file content as input args.
     #[arg(
         short = 'f',

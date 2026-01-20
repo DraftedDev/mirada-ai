@@ -1,7 +1,0 @@
-
-| Split | Metric        | Min.     | Epoch    | Max.     | Epoch    |
-|-------|---------------|----------|----------|----------|----------|
-| Train | Learning Rate | 1.016e-3 | 93       | 4.521e-3 | 1        |
-| Train | Loss          | 2.218e-3 | 98       | 0.687    | 1        |
-| Valid | Learning Rate | 0.000e0  | 1        | 0.000e0  | 100      |
-| Valid | Loss          | 2.024e-3 | 98       | 0.019    | 1        |

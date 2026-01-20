@@ -2,7 +2,7 @@ use crate::consts::{FEATURE_SIZE, HORIZON, OTHER_STOCKS};
 use crate::math::{generate_targets, normalize, process};
 use burn::Tensor;
 use burn::prelude::Backend;
-use burn::tensor::{Shape, TensorData};
+use burn::tensor::{Int, Shape, TensorData};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use time::OffsetDateTime;
@@ -34,8 +34,8 @@ impl Display for DataKey {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StockData {
-    features: SerdeTensor<2>,
-    targets: SerdeTensor<2>,
+    features: FloatSerdeTensor<2>,
+    targets: IntSerdeTensor<1>,
     last_close: f32,
 }
 
@@ -50,41 +50,61 @@ impl StockData {
     ) -> Self {
         let last_close = *closes.last().expect("No closes provided");
 
+        log::debug!("Processing data into features...");
+        let raw_features = process(&opens, &closes, &volumes, &highs, &lows);
+
+        log::debug!("Normalizing features data...");
+        let norm_features = normalize(&raw_features);
+
+        assert!(
+            norm_features.len() > HORIZON,
+            "Not enough timesteps after normalization. Need more than {HORIZON}, but got {}",
+            norm_features.len()
+        );
+
         let targets_data = if train {
             log::debug!("Generating targets data...");
+            let offset = closes
+                .len()
+                .checked_sub(norm_features.len())
+                .expect("closes shorter than normalized features");
+
             generate_targets(&closes, HORIZON)
+                .into_iter()
+                .skip(offset)
+                .take(norm_features.len() - HORIZON)
+                .collect()
         } else {
             log::debug!("Using empty targets data...");
             Vec::new()
         };
 
-        log::debug!("Processing data into features...");
-        let raw_features = process(opens, closes, volumes, highs, lows);
-
-        log::debug!("Normalizing features data...");
-        let norm_features = normalize(&raw_features);
+        log::info!(
+            "Got {} processed into {} normalized features.",
+            raw_features.len(),
+            norm_features.len()
+        );
 
         log::debug!("Finalizing features and targets data...");
 
-        // Remove the last `HORIZON` rows during training to match target length.
         let features = if train {
-            let slice_len = norm_features.len().saturating_sub(HORIZON);
-
-            norm_features[..slice_len].to_vec()
+            norm_features[..norm_features.len() - HORIZON].to_vec()
         } else {
-            norm_features.to_vec()
+            norm_features
         };
+
+        assert_eq!(features.len(), targets_data.len());
 
         let flat_features: Vec<f32> = features.iter().flat_map(|x| x.iter()).copied().collect();
 
         let targets = if train {
-            SerdeTensor::new([features.len(), 1], targets_data)
+            IntSerdeTensor::new([features.len()], targets_data)
         } else {
-            SerdeTensor::none()
+            IntSerdeTensor::none()
         };
 
         Self {
-            features: SerdeTensor::new([features.len(), FEATURE_SIZE], flat_features),
+            features: FloatSerdeTensor::new([features.len(), FEATURE_SIZE], flat_features),
             targets,
             last_close,
         }
@@ -133,13 +153,13 @@ impl StockData {
         );
 
         Self {
-            features: SerdeTensor::from_tensor(Tensor::cat(merged, 1)),
+            features: FloatSerdeTensor::from_tensor(Tensor::cat(merged, 1)),
             targets: self.targets,
             last_close: self.last_close,
         }
     }
 
-    pub fn into_tensors<B: Backend>(self, device: &B::Device) -> (Tensor<B, 2>, Tensor<B, 2>) {
+    pub fn into_tensors<B: Backend>(self, device: &B::Device) -> (Tensor<B, 2>, Tensor<B, 1, Int>) {
         (
             self.features.to_tensor(device),
             self.targets.to_tensor(device),
@@ -148,12 +168,12 @@ impl StockData {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SerdeTensor<const D: usize> {
+pub struct FloatSerdeTensor<const D: usize> {
     pub shape: Shape,
     pub data: Vec<f32>,
 }
 
-impl<const D: usize> SerdeTensor<D> {
+impl<const D: usize> FloatSerdeTensor<D> {
     pub fn new(shape: impl Into<Shape>, data: Vec<f32>) -> Self {
         Self {
             shape: shape.into(),
@@ -174,6 +194,39 @@ impl<const D: usize> SerdeTensor<D> {
         let data = tensor
             .to_data()
             .to_vec::<f32>()
+            .expect("Failed to convert tensor to vector");
+
+        Self { shape, data }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct IntSerdeTensor<const D: usize> {
+    pub shape: Shape,
+    pub data: Vec<i32>,
+}
+
+impl<const D: usize> IntSerdeTensor<D> {
+    pub fn new(shape: impl Into<Shape>, data: Vec<i32>) -> Self {
+        Self {
+            shape: shape.into(),
+            data,
+        }
+    }
+
+    pub fn none() -> Self {
+        Self::new([0; D], Vec::new())
+    }
+
+    pub fn to_tensor<B: Backend>(self, device: &B::Device) -> Tensor<B, D, Int> {
+        Tensor::from_data(TensorData::new(self.data, self.shape), device)
+    }
+
+    pub fn from_tensor<B: Backend>(tensor: Tensor<B, D, Int>) -> Self {
+        let shape = tensor.shape();
+        let data = tensor
+            .to_data()
+            .to_vec::<i32>()
             .expect("Failed to convert tensor to vector");
 
         Self { shape, data }

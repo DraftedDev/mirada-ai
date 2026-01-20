@@ -16,7 +16,7 @@ pub struct MirandaCli {
     #[arg(short = 'd', long = "database", default_value = database::DATABASE_PATH)]
     pub database: String,
     /// The timeout to use for web requests.
-    #[arg(short = 't', long = "timeout", default_value = "5000")]
+    #[arg(short = 't', long = "timeout", default_value = "12000")]
     pub timeout: u64,
 }
 
@@ -38,9 +38,9 @@ pub enum Command {
 /// Arguments for the fetch command.
 #[derive(Args)]
 pub struct FetchArgs {
-    /// Whether to skip database insertion if data key already exists.
-    #[arg(short = 's', long = "skip-if-exists", default_value = "true")]
-    pub skip_if_exists: bool,
+    /// Don't skip existent keys.
+    #[arg(short = 's', long = "dont-skip-existent", default_value_t = false)]
+    pub dont_skip_existent: bool,
     /// Whether to fetch multiple quotes using the given CSV file content as input args.
     #[arg(
         short = 'f',

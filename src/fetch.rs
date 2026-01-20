@@ -9,7 +9,7 @@ use yahoo_finance_api::time::OffsetDateTime;
 pub fn fetch(
     database: String,
     timeout: u64,
-    skip_if_exists: bool,
+    dont_skip: bool,
     start: Option<String>,
     end: Option<String>,
     ticker: Option<String>,
@@ -42,7 +42,7 @@ pub fn fetch(
             let progress = round_to((idx as f32 / length) * 100.0, 2);
             log::info!("Progress: {progress}%");
 
-            if skip_if_exists && database.get(key.clone()).is_some() {
+            if !dont_skip && database.get(key.clone()).is_some() {
                 log::warn!("Key {} already exists. Skipping...", key);
                 continue;
             } else {

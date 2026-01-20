@@ -1,5 +1,6 @@
 {
-  "hidden_dim": 256,
-  "residual_blocks": 10,
+  "hidden1": 128,
+  "hidden2": 64,
+  "hidden3": 32,
   "dropout": 0.1
 }

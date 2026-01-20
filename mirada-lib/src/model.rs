@@ -1,88 +1,53 @@
 use crate::batcher::DataBatch;
-use crate::consts::TOTAL_FEATURE_SIZE;
-use crate::residual::{ResidualBlock, ResidualBlockConfig};
+use crate::consts::{CLASSES, TOTAL_FEATURE_SIZE};
 use burn::Tensor;
 use burn::config::Config;
 use burn::module::Module;
-use burn::nn::loss::{MseLoss, Reduction};
-use burn::nn::{
-    Dropout, DropoutConfig, Gelu, LayerNorm, LayerNormConfig, Linear, LinearConfig, Sigmoid,
-};
+use burn::nn::loss::{CrossEntropyLoss, CrossEntropyLossConfig};
+use burn::nn::{Dropout, DropoutConfig, Gelu, Linear, LinearConfig};
 use burn::prelude::Backend;
 use burn::record::CompactRecorder;
+use burn::tensor::Int;
 use burn::tensor::backend::AutodiffBackend;
-use burn::train::{RegressionOutput, TrainOutput, TrainStep, ValidStep};
+use burn::train::{ClassificationOutput, TrainOutput, TrainStep, ValidStep};
 use std::path::Path;
 
 /// The core machine learning model for Mirada AI.
 #[derive(Debug, Module)]
 pub struct Model<B: Backend> {
-    feature_gate: Linear<B>,
-    sigmoid: Sigmoid,
-    input_linear: Linear<B>,
-    input_norm: LayerNorm<B>,
-    input_activation: Gelu,
+    loss: CrossEntropyLoss<B>,
 
-    residual_blocks: Vec<ResidualBlock<B>>,
+    activation: Gelu,
+    dropout: Dropout,
 
-    mlp_linear: Linear<B>,
-    mlp_activation: Gelu,
-    mlp_dropout: Dropout,
-
-    head_norm: LayerNorm<B>,
-    head: Linear<B>,
+    linear1: Linear<B>,
+    linear2: Linear<B>,
+    linear3: Linear<B>,
+    linear4: Linear<B>,
 }
 
 impl<B: Backend> Model<B> {
     pub fn forward(&self, input: Tensor<B, 2>) -> Tensor<B, 2> {
-        // Feature gating
-        let mut x = {
-            let gate = self.feature_gate.forward(input.clone());
+        let x = self.linear1.forward(input);
+        let x = self.activation.forward(x);
+        let x = self.dropout.forward(x);
+        let x = self.linear2.forward(x);
+        let x = self.activation.forward(x);
+        let x = self.dropout.forward(x);
+        let x = self.linear3.forward(x);
+        let x = self.activation.forward(x);
 
-            self.sigmoid.forward(gate) * input
-        };
-
-        // Input linear + norm + activation
-        x = {
-            let lin = self.input_linear.forward(x);
-            let norm = self.input_norm.forward(lin);
-
-            self.input_activation.forward(norm)
-        };
-
-        // Residual blocks
-        for block in &self.residual_blocks {
-            x = block.forward(x);
-        }
-
-        // MLP Linear + activation + dropout + residual
-        x = {
-            let mlp_residual = x.clone();
-
-            x = self.mlp_linear.forward(x);
-            x = self.mlp_activation.forward(x);
-            x = self.mlp_dropout.forward(x);
-
-            x + mlp_residual
-        };
-
-        // Head Norm + Linear
-        {
-            x = self.head_norm.forward(x);
-            self.head.forward(x)
-        }
+        self.linear4.forward(x)
     }
 
-    pub fn forward_regression(
+    pub fn forward_classification(
         &self,
         input: Tensor<B, 2>,
-        target: Tensor<B, 2>,
-    ) -> RegressionOutput<B> {
+        target: Tensor<B, 1, Int>,
+    ) -> ClassificationOutput<B> {
         let out = self.forward(input);
-
-        let loss = MseLoss.forward(out.clone(), target.clone(), Reduction::Mean);
-
-        RegressionOutput::new(loss, out, target)
+        let loss = self.loss.forward(out.clone(), target.clone());
+        ClassificationOutput::new(loss, out, target)
     }
 
     pub fn load(config: ModelConfig, path: impl AsRef<Path>, device: &B::Device) -> Self {
@@ -99,26 +64,28 @@ impl<B: Backend> Model<B> {
     }
 }
 
-impl<B: AutodiffBackend> TrainStep<DataBatch<B>, RegressionOutput<B>> for Model<B> {
-    fn step(&self, batch: DataBatch<B>) -> TrainOutput<RegressionOutput<B>> {
-        let item = self.forward_regression(batch.features, batch.targets);
+impl<B: AutodiffBackend> TrainStep<DataBatch<B>, ClassificationOutput<B>> for Model<B> {
+    fn step(&self, batch: DataBatch<B>) -> TrainOutput<ClassificationOutput<B>> {
+        let item = self.forward_classification(batch.features, batch.targets);
 
         TrainOutput::new(self, item.loss.backward(), item)
     }
 }
 
-impl<B: Backend> ValidStep<DataBatch<B>, RegressionOutput<B>> for Model<B> {
-    fn step(&self, batch: DataBatch<B>) -> RegressionOutput<B> {
-        self.forward_regression(batch.features, batch.targets)
+impl<B: Backend> ValidStep<DataBatch<B>, ClassificationOutput<B>> for Model<B> {
+    fn step(&self, batch: DataBatch<B>) -> ClassificationOutput<B> {
+        self.forward_classification(batch.features, batch.targets)
     }
 }
 
 #[derive(Debug, Config)]
 pub struct ModelConfig {
-    #[config(default = 256)]
-    pub hidden_dim: usize,
-    #[config(default = 8)]
-    pub residual_blocks: usize,
+    #[config(default = 128)]
+    pub hidden1: usize,
+    #[config(default = 64)]
+    pub hidden2: usize,
+    #[config(default = 32)]
+    pub hidden3: usize,
     #[config(default = 0.1)]
     pub dropout: f64,
 }
@@ -126,27 +93,19 @@ pub struct ModelConfig {
 impl ModelConfig {
     pub fn init<B: Backend>(&self, device: &B::Device) -> Model<B> {
         Model {
-            feature_gate: LinearConfig::new(TOTAL_FEATURE_SIZE, TOTAL_FEATURE_SIZE).init(device),
-            sigmoid: Sigmoid::new(),
-            input_linear: LinearConfig::new(TOTAL_FEATURE_SIZE, self.hidden_dim).init(device),
-            input_activation: Gelu::new(),
-            input_norm: LayerNormConfig::new(self.hidden_dim)
-                .with_epsilon(1e-5)
-                .init(device),
-            residual_blocks: vec![
-                ResidualBlockConfig::new(
-                    self.hidden_dim,
-                    self.hidden_dim,
-                    self.dropout
-                )
-                .init(device);
-                self.residual_blocks
-            ],
-            mlp_linear: LinearConfig::new(self.hidden_dim, self.hidden_dim).init(device),
-            mlp_activation: Gelu::new(),
-            mlp_dropout: DropoutConfig::new(self.dropout).init(),
-            head_norm: LayerNormConfig::new(self.hidden_dim).init(device),
-            head: LinearConfig::new(self.hidden_dim, 1).init(device),
+            loss: CrossEntropyLossConfig {
+                pad_tokens: None,
+                weights: None,
+                smoothing: None,
+                logits: true,
+            }
+            .init(device),
+            activation: Gelu,
+            dropout: DropoutConfig::new(self.dropout).init(),
+            linear1: LinearConfig::new(TOTAL_FEATURE_SIZE, self.hidden1).init(device),
+            linear2: LinearConfig::new(self.hidden1, self.hidden2).init(device),
+            linear3: LinearConfig::new(self.hidden2, self.hidden3).init(device),
+            linear4: LinearConfig::new(self.hidden3, CLASSES).init(device),
         }
     }
 

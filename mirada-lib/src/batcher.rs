@@ -3,6 +3,7 @@ use crate::dataset::DataItem;
 use burn::Tensor;
 use burn::data::dataloader::batcher::Batcher;
 use burn::prelude::Backend;
+use burn::tensor::Int;
 
 #[derive(Clone)]
 pub struct StockBatcher {
@@ -42,5 +43,5 @@ impl<B: Backend> Batcher<B, DataItem, DataBatch<B>> for StockBatcher {
 #[derive(Clone, Debug)]
 pub struct DataBatch<B: Backend> {
     pub features: Tensor<B, 2>,
-    pub targets: Tensor<B, 2>,
+    pub targets: Tensor<B, 1, Int>,
 }

@@ -7,9 +7,8 @@ use burn::data::dataloader::DataLoaderBuilder;
 use burn::lr_scheduler::cosine::CosineAnnealingLrSchedulerConfig;
 use burn::module::Module;
 use burn::optim::AdamWConfig;
-use burn::record::CompactRecorder;
 use burn::tensor::backend::AutodiffBackend;
-use burn::train::metric::{LearningRateMetric, LossMetric};
+use burn::train::metric::{AccuracyMetric, LearningRateMetric, LossMetric, PrecisionMetric};
 use burn::train::{LearnerBuilder, LearningStrategy};
 use std::path::Path;
 
@@ -45,13 +44,19 @@ impl<B: AutodiffBackend> Model<B> {
             .with_weight_decay(config.weight_decay)
             .init();
 
+        let recorder = Self::recorder();
+
         log::info!("Initializing learner...");
         let learner = LearnerBuilder::new(artifacts)
             .metric_train_numeric(LossMetric::new())
             .metric_valid_numeric(LossMetric::new())
             .metric_train_numeric(LearningRateMetric::new())
             .metric_valid_numeric(LearningRateMetric::new())
-            .with_file_checkpointer(CompactRecorder::new())
+            .metric_train_numeric(AccuracyMetric::new())
+            .metric_valid_numeric(AccuracyMetric::new())
+            .metric_train_numeric(PrecisionMetric::binary(0.5))
+            .metric_valid_numeric(PrecisionMetric::binary(0.5))
+            .with_file_checkpointer(recorder.clone())
             .learning_strategy(LearningStrategy::SingleDevice(device))
             .num_epochs(config.num_epochs)
             .summary()
@@ -65,8 +70,6 @@ impl<B: AutodiffBackend> Model<B> {
             );
 
         let result = learner.fit(train_dataloader, valid_dataloader);
-
-        let recorder = Self::recorder();
 
         result
             .model

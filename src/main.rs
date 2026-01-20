@@ -35,7 +35,7 @@ fn main() {
         Command::Fetch(args) => fetch::fetch(
             cli.database,
             cli.timeout,
-            args.skip_if_exists,
+            args.dont_skip_existent,
             args.start,
             args.end,
             args.ticker,

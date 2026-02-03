@@ -4,7 +4,10 @@ use crate::model::Model;
 use burn::prelude::Backend;
 
 impl<B: Backend> Model<B> {
-    pub fn infer(&self, input: StockData, device: &B::Device) -> f32 {
+    /// Infer the class of the given input.
+    ///
+    /// See [crate::math::generate_targets] for info about classes.
+    pub fn infer(&self, input: StockData, device: &B::Device) -> i32 {
         let (features, _) = input.into_tensors(device);
         let shape = features.shape();
 
@@ -20,10 +23,28 @@ impl<B: Backend> Model<B> {
 
         let output = self.forward(input).detach();
 
-        output.into_data().to_vec::<f32>().unwrap()[0]
+        // Argmax along class dimension (2 classes)
+        let preds = output
+            .argmax(1)
+            .into_data()
+            .to_vec::<i32>()
+            .expect("Failed to convert output to vector");
+
+        preds[0]
     }
 
-    pub fn infer_price(&self, input: StockData, device: &B::Device) -> f32 {
-        input.last_close() * self.infer(input, device).exp()
+    /// Infer if the given input is an up or down move.
+    ///
+    /// Returns `true` if the model predicts an up move or `false` if it predicts a down move.
+    pub fn infer_up(&self, input: StockData, device: &B::Device) -> bool {
+        let class = self.infer(input, device);
+
+        if class == 0 {
+            false
+        } else if class == 1 {
+            true
+        } else {
+            panic!("Invalid class. This should never happen!")
+        }
     }
 }

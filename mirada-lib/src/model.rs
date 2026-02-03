@@ -1,10 +1,14 @@
 use crate::batcher::DataBatch;
-use crate::consts::{CLASSES, TOTAL_FEATURE_SIZE};
+use crate::consts::TOTAL_FEATURE_SIZE;
+use crate::residual::{ResidualBlock, ResidualBlockConfig};
 use burn::Tensor;
 use burn::config::Config;
 use burn::module::Module;
 use burn::nn::loss::{CrossEntropyLoss, CrossEntropyLossConfig};
-use burn::nn::{Dropout, DropoutConfig, Gelu, Linear, LinearConfig};
+use burn::nn::{
+    Dropout, DropoutConfig, Gelu, LayerNorm, LayerNormConfig, Linear, LinearConfig, SwiGlu,
+    SwiGluConfig,
+};
 use burn::prelude::Backend;
 use burn::record::CompactRecorder;
 use burn::tensor::Int;
@@ -16,28 +20,36 @@ use std::path::Path;
 #[derive(Debug, Module)]
 pub struct Model<B: Backend> {
     loss: CrossEntropyLoss<B>,
-
-    activation: Gelu,
+    act: Gelu,
     dropout: Dropout,
-
-    linear1: Linear<B>,
-    linear2: Linear<B>,
-    linear3: Linear<B>,
-    linear4: Linear<B>,
+    lin1: Linear<B>,
+    lin2: Linear<B>,
+    glu: SwiGlu<B>,
+    norm: LayerNorm<B>,
+    blocks: Vec<ResidualBlock<B>>,
+    lin3: Linear<B>,
+    lin4: Linear<B>,
 }
 
 impl<B: Backend> Model<B> {
     pub fn forward(&self, input: Tensor<B, 2>) -> Tensor<B, 2> {
-        let x = self.linear1.forward(input);
-        let x = self.activation.forward(x);
-        let x = self.dropout.forward(x);
-        let x = self.linear2.forward(x);
-        let x = self.activation.forward(x);
-        let x = self.dropout.forward(x);
-        let x = self.linear3.forward(x);
-        let x = self.activation.forward(x);
+        let mut x = self.lin1.forward(input);
+        x = self.act.forward(x);
+        x = self.dropout.forward(x);
+        x = self.norm.forward(x);
+        x = self.lin2.forward(x);
+        x = self.glu.forward(x);
 
-        self.linear4.forward(x)
+        x = self.dropout.forward(x);
+
+        for block in &self.blocks {
+            x = block.forward(x);
+        }
+
+        x = self.lin3.forward(x);
+        x = self.act.forward(x);
+        x = self.dropout.forward(x);
+        self.lin4.forward(x)
     }
 
     pub fn forward_classification(
@@ -78,34 +90,51 @@ impl<B: Backend> ValidStep<DataBatch<B>, ClassificationOutput<B>> for Model<B> {
     }
 }
 
-#[derive(Debug, Config)]
+#[derive(Config, Debug)]
 pub struct ModelConfig {
+    /// Loss smoothing factor.
+    #[config(default = 0.05)]
+    pub loss_smoothing: f32,
+
+    /// Hidden dimension for Linear and SwiGLU layers.
     #[config(default = 128)]
-    pub hidden1: usize,
-    #[config(default = 64)]
-    pub hidden2: usize,
-    #[config(default = 32)]
-    pub hidden3: usize,
+    pub hidden_dim: usize,
+
+    /// Number of residual blocks.
+    #[config(default = 5)]
+    pub num_residual_blocks: usize,
+
+    /// Dropout probability.
     #[config(default = 0.1)]
     pub dropout: f64,
 }
 
 impl ModelConfig {
     pub fn init<B: Backend>(&self, device: &B::Device) -> Model<B> {
+        let blocks = (0..self.num_residual_blocks)
+            .map(|_| {
+                ResidualBlockConfig {
+                    hidden_dim: self.hidden_dim,
+                    dropout: self.dropout,
+                }
+                .init(device)
+            })
+            .collect();
+
         Model {
-            loss: CrossEntropyLossConfig {
-                pad_tokens: None,
-                weights: None,
-                smoothing: None,
-                logits: true,
-            }
-            .init(device),
-            activation: Gelu,
+            loss: CrossEntropyLossConfig::new()
+                .with_logits(true)
+                .with_smoothing(Some(self.loss_smoothing))
+                .init(device),
+            act: Gelu::new(),
             dropout: DropoutConfig::new(self.dropout).init(),
-            linear1: LinearConfig::new(TOTAL_FEATURE_SIZE, self.hidden1).init(device),
-            linear2: LinearConfig::new(self.hidden1, self.hidden2).init(device),
-            linear3: LinearConfig::new(self.hidden2, self.hidden3).init(device),
-            linear4: LinearConfig::new(self.hidden3, CLASSES).init(device),
+            lin1: LinearConfig::new(TOTAL_FEATURE_SIZE, self.hidden_dim).init(device),
+            lin2: LinearConfig::new(self.hidden_dim, self.hidden_dim * 2).init(device), // expand to hidden_dim * 2
+            glu: SwiGluConfig::new(self.hidden_dim * 2, self.hidden_dim).init(device), // compress back to hidden_dim
+            norm: LayerNormConfig::new(self.hidden_dim).init(device),
+            blocks,
+            lin3: LinearConfig::new(self.hidden_dim, self.hidden_dim).init(device),
+            lin4: LinearConfig::new(self.hidden_dim, 2).init(device), // 2 classes: up/down
         }
     }
 

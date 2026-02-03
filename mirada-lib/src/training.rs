@@ -3,12 +3,12 @@ use crate::database::Database;
 use crate::dataset::StockDataset;
 use crate::model::Model;
 use burn::config::Config;
-use burn::data::dataloader::DataLoaderBuilder;
+use burn::data::dataloader::{DataLoaderBuilder, Dataset};
 use burn::lr_scheduler::cosine::CosineAnnealingLrSchedulerConfig;
 use burn::module::Module;
 use burn::optim::AdamWConfig;
 use burn::tensor::backend::AutodiffBackend;
-use burn::train::metric::{AccuracyMetric, LearningRateMetric, LossMetric, PrecisionMetric};
+use burn::train::metric::{AccuracyMetric, LearningRateMetric, LossMetric};
 use burn::train::{LearnerBuilder, LearningStrategy};
 use std::path::Path;
 
@@ -27,6 +27,11 @@ impl<B: AutodiffBackend> Model<B> {
         B::seed(&device, config.seed);
 
         let batcher = StockBatcher::new(database.clone());
+
+        assert!(
+            !train_set.is_empty() && !valid_set.is_empty(),
+            "Training and validation datasets must not be empty"
+        );
 
         let train_dataloader = DataLoaderBuilder::new(batcher.clone())
             .batch_size(config.batch_size)
@@ -54,8 +59,6 @@ impl<B: AutodiffBackend> Model<B> {
             .metric_valid_numeric(LearningRateMetric::new())
             .metric_train_numeric(AccuracyMetric::new())
             .metric_valid_numeric(AccuracyMetric::new())
-            .metric_train_numeric(PrecisionMetric::binary(0.5))
-            .metric_valid_numeric(PrecisionMetric::binary(0.5))
             .with_file_checkpointer(recorder.clone())
             .learning_strategy(LearningStrategy::SingleDevice(device))
             .num_epochs(config.num_epochs)

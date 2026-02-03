@@ -69,11 +69,15 @@ impl StockData {
                 .checked_sub(norm_features.len())
                 .expect("closes shorter than normalized features");
 
-            generate_targets(&closes, HORIZON)
+            let targets = generate_targets(&closes, HORIZON)
                 .into_iter()
                 .skip(offset)
                 .take(norm_features.len() - HORIZON)
-                .collect()
+                .collect::<Vec<_>>();
+
+            assert!(!targets.is_empty(), "Targets cannot be empty");
+
+            targets
         } else {
             log::debug!("Using empty targets data...");
             Vec::new()
@@ -88,12 +92,23 @@ impl StockData {
         log::debug!("Finalizing features and targets data...");
 
         let features = if train {
-            norm_features[..norm_features.len() - HORIZON].to_vec()
+            let slice_len = norm_features.len().saturating_sub(HORIZON);
+            assert!(
+                slice_len > 0,
+                "Not enough normalized features after slicing for HORIZON"
+            );
+            let features = norm_features[..slice_len].to_vec();
+
+            assert_eq!(
+                features.len(),
+                targets_data.len(),
+                "Features and targets must have the same length"
+            );
+
+            features
         } else {
             norm_features
         };
-
-        assert_eq!(features.len(), targets_data.len());
 
         let flat_features: Vec<f32> = features.iter().flat_map(|x| x.iter()).copied().collect();
 

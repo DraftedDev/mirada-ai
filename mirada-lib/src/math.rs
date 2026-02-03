@@ -55,14 +55,7 @@ pub fn normalize(features: &[[f32; FEATURE_SIZE]]) -> Vec<[f32; FEATURE_SIZE]> {
         }
     }
 
-    let skip = ROLLING_WINDOW.max(SKIPPED_TIMESTEPS);
-
-    assert!(
-        skip < n,
-        "Normalization skip {skip} is higher than feature length {n}!"
-    );
-
-    out.into_iter().skip(skip).collect()
+    out
 }
 
 /// Processes the input data into features:

@@ -1,4 +1,4 @@
-use crate::consts::{FEATURE_SIZE, HORIZON, OTHER_STOCKS};
+use crate::consts::{FEATURE_SIZE, HORIZON, OTHER_STOCKS, ROLLING_WINDOW, SKIPPED_TIMESTEPS};
 use crate::math::{generate_targets, normalize, process};
 use burn::Tensor;
 use burn::prelude::Backend;
@@ -48,68 +48,68 @@ impl StockData {
         lows: Vec<f32>,
         train: bool,
     ) -> Self {
+        let n = closes.len();
         let last_close = *closes.last().expect("No closes provided");
 
+        let skip = ROLLING_WINDOW.max(SKIPPED_TIMESTEPS);
+
+        assert!(
+            n > skip + HORIZON,
+            "Not enough timesteps: need > skip({}) + horizon({}), got {}",
+            skip,
+            HORIZON,
+            n
+        );
+
+        // Total usable supervised samples
+        let usable = n - skip - HORIZON;
+
+        // -------- FEATURES --------
         log::debug!("Processing data into features...");
         let raw_features = process(&opens, &closes, &volumes, &highs, &lows);
 
-        log::debug!("Normalizing features data...");
-        let norm_features = normalize(&raw_features);
+        log::debug!("Normalizing features...");
+        let norm_features = normalize(&raw_features); // length = n - skip
 
         assert!(
-            norm_features.len() > HORIZON,
-            "Not enough timesteps after normalization. Need more than {HORIZON}, but got {}",
-            norm_features.len()
+            norm_features.len() >= usable,
+            "Normalized features too short: {} < usable {}",
+            norm_features.len(),
+            usable
         );
 
+        // features[i] corresponds to time t = skip + i
+        let features: Vec<[f32; FEATURE_SIZE]> = norm_features[..usable].to_vec();
+
+        // -------- TARGETS --------
         let targets_data = if train {
-            log::debug!("Generating targets data...");
-            let offset = closes
-                .len()
-                .checked_sub(norm_features.len())
-                .expect("closes shorter than normalized features");
+            log::debug!("Generating targets...");
 
-            let targets = generate_targets(&closes, HORIZON)
-                .into_iter()
-                .skip(offset)
-                .take(norm_features.len() - HORIZON)
-                .collect::<Vec<_>>();
+            let all_targets = generate_targets(&closes, HORIZON);
+            // all_targets[t] corresponds to time t
 
-            assert!(!targets.is_empty(), "Targets cannot be empty");
+            let targets = all_targets[skip..skip + usable].to_vec();
+
+            assert_eq!(
+                features.len(),
+                targets.len(),
+                "Feature/target misalignment: {} vs {}",
+                features.len(),
+                targets.len()
+            );
 
             targets
         } else {
-            log::debug!("Using empty targets data...");
             Vec::new()
         };
 
         log::info!(
-            "Got {} processed into {} normalized features.",
-            raw_features.len(),
-            norm_features.len()
+            "Final dataset: {} samples, {} features each",
+            features.len(),
+            FEATURE_SIZE
         );
 
-        log::debug!("Finalizing features and targets data...");
-
-        let features = if train {
-            let slice_len = norm_features.len().saturating_sub(HORIZON);
-            assert!(
-                slice_len > 0,
-                "Not enough normalized features after slicing for HORIZON"
-            );
-            let features = norm_features[..slice_len].to_vec();
-
-            assert_eq!(
-                features.len(),
-                targets_data.len(),
-                "Features and targets must have the same length"
-            );
-
-            features
-        } else {
-            norm_features
-        };
-
+        // Flatten features
         let flat_features: Vec<f32> = features.iter().flat_map(|x| x.iter()).copied().collect();
 
         let targets = if train {

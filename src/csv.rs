@@ -1,9 +1,9 @@
-use crate::utils::{DATE_FORMAT, parse_date};
+use crate::utils::{CHRONO_DATE_FORMAT, parse_date};
 use crate::{fetch, train};
 use csv::{ReaderBuilder, WriterBuilder};
 use serde::Serialize;
 use std::collections::BTreeMap;
-use std::time::Duration;
+use trading_calendar::{Market, NaiveDate, TradingCalendar};
 
 pub fn fetch(
     output: String,
@@ -13,48 +13,57 @@ pub fn fetch(
     shift: u64,
     tickers: Vec<String>,
 ) {
-    let start = parse_date(&start);
-    let end = parse_date(&end);
+    let (start_y, start_o) = parse_date(&start).to_ordinal_date();
+    let start =
+        NaiveDate::from_yo_opt(start_y, start_o as u32).expect("Failed to parse start date");
+    let (end_y, end_o) = parse_date(&end).to_ordinal_date();
+    let end = NaiveDate::from_yo_opt(end_y, end_o as u32).expect("Failed to parse end date");
 
-    let window = Duration::from_hours(24 * length);
-    let step = Duration::from_hours(24 * shift);
-
-    let mut rows = Vec::with_capacity(tickers.len());
-    let mut current_start = start;
+    // initialize NASDAQ trading calendar
+    let calendar = TradingCalendar::new(Market::NASDAQ).expect("Failed to get NASDAQ calendar");
 
     log::info!(
-        "Generating rows (window = {} days, shift = {} days)...",
+        "Generating rows (window = {} trading days, shift = {} trading days)...",
         length,
         shift
     );
 
-    while current_start < end {
-        let current_end = current_start + window;
+    let mut rows = Vec::new();
+    let mut current_start = calendar.next_trading_day(start);
 
-        if current_end > end {
+    while current_start < end {
+        // get the end date of the window (length trading days after current_start)
+        let mut current_end = current_start;
+
+        for _ in 0..(length - 1) {
+            current_end = calendar.next_trading_day(current_end);
+        }
+
+        if current_end >= end {
             log::warn!(
-                "Item from {current_start} to {current_end} ignored, due to insufficient data."
+                "Window from {} to {} exceeds end date; stopping.",
+                current_start,
+                current_end
             );
             break;
         }
 
+        // add a row for each ticker
         for ticker in &tickers {
             rows.push(fetch::Record {
                 ticker: ticker.clone(),
-                start: current_start
-                    .format(DATE_FORMAT)
-                    .expect("Failed to format start date"),
-                end: current_end
-                    .format(DATE_FORMAT)
-                    .expect("Failed to format end date"),
+                start: current_start.format(CHRONO_DATE_FORMAT).to_string(),
+                end: current_end.format(CHRONO_DATE_FORMAT).to_string(),
             });
         }
 
-        // advance by shift and not by window length
-        current_start += step;
+        // advance start by `shift` trading days
+        for _ in 0..shift {
+            current_start = calendar.next_trading_day(current_start);
+        }
     }
 
-    log::info!("Writing {} rows to '{output}'...", rows.len());
+    log::info!("Writing {} rows to '{}'", rows.len(), output);
     write_csv_to(output, &rows);
 }
 

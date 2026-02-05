@@ -65,11 +65,11 @@ impl StockData {
         let usable = n - skip - HORIZON;
 
         // -------- FEATURES --------
-        log::debug!("Processing data into features...");
         let raw_features = process(&opens, &closes, &volumes, &highs, &lows);
+        log::debug!("Processed data into {} feature items", raw_features.len());
 
-        log::debug!("Normalizing features...");
         let norm_features = normalize(&raw_features); // length = n - skip
+        log::debug!("Normalized data into {} feature items", norm_features.len());
 
         assert!(
             norm_features.len() >= usable,
@@ -83,8 +83,6 @@ impl StockData {
 
         // -------- TARGETS --------
         let targets_data = if train {
-            log::debug!("Generating targets...");
-
             let all_targets = generate_targets(&closes, HORIZON);
             // all_targets[t] corresponds to time t
 

@@ -6,6 +6,8 @@ use time::format_description::BorrowedFormatItem;
 use yahoo_finance_api::time::Date;
 use yahoo_finance_api::{YahooConnector, YahooConnectorBuilder};
 
+pub const CHRONO_DATE_FORMAT: &str = "%d.%m.%Y";
+
 pub const DATE_FORMAT: &[BorrowedFormatItem] =
     time::macros::format_description!("[day].[month].[year]");
 

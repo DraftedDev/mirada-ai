@@ -5,7 +5,7 @@ members = ["mirada-lib"]
 
 [workspace.dependencies]
 time = "0.3.44"
-log = { version = "0.4.29", features = ["max_level_info"] }
+log = { version = "0.4.29" }
 serde = { version = "1.0.217", features = ["derive"] }
 
 [package]
@@ -19,6 +19,7 @@ env_logger = "0.11.8"
 yahoo_finance_api = { version = "4.1.0", features = ["blocking"] }
 mirada-lib = { path = "mirada-lib", features = ["cuda"] }
 csv = "1.4.0"
+trading-calendar = "0.2.3"
 log = { workspace = true }
 serde = { workspace = true }
 time = { workspace = true, features = ["macros"] }

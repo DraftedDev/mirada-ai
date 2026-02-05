@@ -1,7 +1,7 @@
 pub const CLIP: f32 = 5.0;
 pub const ROLLING_WINDOW: usize = 50;
 pub const HORIZON: usize = 1;
-pub const FEATURE_SIZE: usize = 17;
+pub const FEATURE_SIZE: usize = 22;
 pub const OTHER_STOCKS: usize = 5;
 pub const TOTAL_FEATURE_SIZE: usize = FEATURE_SIZE * (OTHER_STOCKS + 1);
 pub const SKIPPED_TIMESTEPS: usize = 26;

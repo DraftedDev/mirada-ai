@@ -4,9 +4,9 @@ cargo-features = ["profile-rustflags"]
 members = ["mirada-lib"]
 
 [workspace.dependencies]
-time = "0.3.44"
+time = "0.3.47"
 log = { version = "0.4.29" }
-serde = { version = "1.0.217", features = ["derive"] }
+serde = { version = "1.0.228", features = ["derive"] }
 
 [package]
 name = "mirada-ai"
@@ -14,7 +14,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-clap = { version = "4.5.53", features = ["derive"] }
+clap = { version = "4.5.57", features = ["derive"] }
 env_logger = "0.11.8"
 yahoo_finance_api = { version = "4.1.0", features = ["blocking"] }
 mirada-lib = { path = "mirada-lib", features = ["cuda"] }

@@ -9,7 +9,7 @@ use burn::module::Module;
 use burn::optim::AdamWConfig;
 use burn::tensor::backend::AutodiffBackend;
 use burn::train::metric::{AccuracyMetric, LearningRateMetric, LossMetric};
-use burn::train::{LearnerBuilder, LearningStrategy};
+use burn::train::{Learner, SupervisedTraining, TrainingStrategy};
 use std::path::Path;
 
 impl<B: AutodiffBackend> Model<B> {
@@ -49,10 +49,18 @@ impl<B: AutodiffBackend> Model<B> {
             .with_weight_decay(config.weight_decay)
             .init();
 
+        let lr_scheduler =
+            CosineAnnealingLrSchedulerConfig::new(config.init_learning_rate, config.num_epochs)
+                .with_min_lr(config.min_learning_rate)
+                .init()
+                .expect("Failed to init learning rate scheduler");
+
         let recorder = Self::recorder();
 
-        log::info!("Initializing learner...");
-        let learner = LearnerBuilder::new(artifacts)
+        log::info!("Initializing training...");
+        let learner = Learner::new(self.clone(), optimizer, lr_scheduler);
+
+        let training = SupervisedTraining::new(artifacts, train_dataloader, valid_dataloader)
             .metric_train_numeric(LossMetric::new())
             .metric_valid_numeric(LossMetric::new())
             .metric_train_numeric(LearningRateMetric::new())
@@ -60,19 +68,11 @@ impl<B: AutodiffBackend> Model<B> {
             .metric_train_numeric(AccuracyMetric::new())
             .metric_valid_numeric(AccuracyMetric::new())
             .with_file_checkpointer(recorder.clone())
-            .learning_strategy(LearningStrategy::SingleDevice(device))
+            .with_training_strategy(TrainingStrategy::SingleDevice(device))
             .num_epochs(config.num_epochs)
-            .summary()
-            .build(
-                self.clone(),
-                optimizer,
-                CosineAnnealingLrSchedulerConfig::new(config.init_learning_rate, config.num_epochs)
-                    .with_min_lr(config.min_learning_rate)
-                    .init()
-                    .expect("Failed to initialize learning rate scheduler"),
-            );
+            .summary();
 
-        let result = learner.fit(train_dataloader, valid_dataloader);
+        let result = training.launch(learner);
 
         result
             .model

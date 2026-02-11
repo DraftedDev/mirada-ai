@@ -12,7 +12,7 @@ use burn::prelude::Backend;
 use burn::record::CompactRecorder;
 use burn::tensor::Int;
 use burn::tensor::backend::AutodiffBackend;
-use burn::train::{ClassificationOutput, TrainOutput, TrainStep, ValidStep};
+use burn::train::{ClassificationOutput, InferenceStep, TrainOutput, TrainStep};
 use std::path::Path;
 
 /// The core machine learning model for Mirada AI.
@@ -68,7 +68,10 @@ impl<B: Backend> Model<B> {
     }
 }
 
-impl<B: AutodiffBackend> TrainStep<DataBatch<B>, ClassificationOutput<B>> for Model<B> {
+impl<B: AutodiffBackend> TrainStep for Model<B> {
+    type Input = DataBatch<B>;
+    type Output = ClassificationOutput<B>;
+
     fn step(&self, batch: DataBatch<B>) -> TrainOutput<ClassificationOutput<B>> {
         let item = self.forward_classification(batch.features, batch.targets);
 
@@ -76,7 +79,10 @@ impl<B: AutodiffBackend> TrainStep<DataBatch<B>, ClassificationOutput<B>> for Mo
     }
 }
 
-impl<B: Backend> ValidStep<DataBatch<B>, ClassificationOutput<B>> for Model<B> {
+impl<B: Backend> InferenceStep for Model<B> {
+    type Input = DataBatch<B>;
+    type Output = ClassificationOutput<B>;
+
     fn step(&self, batch: DataBatch<B>) -> ClassificationOutput<B> {
         self.forward_classification(batch.features, batch.targets)
     }

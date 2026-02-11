@@ -41,7 +41,7 @@ pub fn fetch(
 
         if current_end >= end {
             log::warn!(
-                "Window from {} to {} exceeds end date; stopping.",
+                "Window from {} to {} exceeds end date. Skipping...",
                 current_start,
                 current_end
             );
@@ -112,7 +112,7 @@ pub fn train(out1: String, out2: String, percent: f32, input: String) {
     write_csv_to(out2, &rows2);
 
     log::info!(
-        "Successfully split {} rows into {}/{}",
+        "Successfully split {} full rows into {}/{}",
         total_groups,
         rows1.len(),
         rows2.len()

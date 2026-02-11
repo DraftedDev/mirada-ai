@@ -111,7 +111,7 @@ pub fn fetch_data(
         );
     }
 
-    StockData::new(opens, closes, volumes, highs, lows, training)
+    StockData::new(opens, closes, volumes, highs, lows, (start, end), training)
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

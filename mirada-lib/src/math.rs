@@ -29,58 +29,46 @@ pub fn generate_targets(closes: &[f32], horizon: usize) -> Vec<i32> {
 }
 
 /// Normalize the output from [process] into rolling mean/std and clipped data.
+// TODO: make this configurable via constants or whatever
 pub fn normalize(features: &[[f32; FEATURE_SIZE]]) -> Vec<[f32; FEATURE_SIZE]> {
     let n = features.len();
     let mut out = vec![[0.0; FEATURE_SIZE]; n];
+    let window = ROLLING_WINDOW;
 
-    for f_idx in 0..FEATURE_SIZE {
-        // Compute rolling mean/std
-        for t in 0..n {
-            if t < ROLLING_WINDOW {
-                // Not enough history: leave as 0 or just normalize by what is available
-                out[t][f_idx] = 0.0;
-            } else {
-                let slice = &features[t - ROLLING_WINDOW..t];
-                let values: Vec<f32> = slice.iter().map(|row| row[f_idx]).collect();
+    for t in 0..n {
+        if t < window {
+            continue;
+        }
+        let slice = &features[t - window..t];
+        let mean: [f32; FEATURE_SIZE] = slice
+            .iter()
+            .fold([0.0; FEATURE_SIZE], |mut acc, row| {
+                for f in 0..FEATURE_SIZE {
+                    acc[f] += row[f];
+                }
+                acc
+            })
+            .map(|v| v / window as f32);
 
-                let mean = values.iter().sum::<f32>() / ROLLING_WINDOW as f32;
-                let var =
-                    values.iter().map(|v| (v - mean).powi(2)).sum::<f32>() / ROLLING_WINDOW as f32;
-                let std = var.sqrt().max(EPS);
+        let std: [f32; FEATURE_SIZE] = slice
+            .iter()
+            .fold([0.0; FEATURE_SIZE], |mut acc, row| {
+                for f in 0..FEATURE_SIZE {
+                    acc[f] += (row[f] - mean[f]).powi(2);
+                }
+                acc
+            })
+            .map(|v| (v / window as f32).sqrt().max(EPS));
 
-                // causal z-score + clip
-                let z = (features[t][f_idx] - mean) / std;
-                out[t][f_idx] = z.clamp(-CLIP, CLIP);
-            }
+        for f in 0..FEATURE_SIZE {
+            out[t][f] = ((features[t][f] - mean[f]) / std[f]).clamp(-CLIP, CLIP);
         }
     }
 
     out
 }
 
-/// Processes the input data into features:
-/// - log_return_1
-/// - log_return_3
-/// - log_return_5
-/// - log_return_10
-/// - rolling_std_5
-/// - rolling_std_10
-/// - rolling_std_20
-/// - sma_5_ratio
-/// - sma_10_ratio
-/// - ema_12_ratio
-/// - ema_26_ratio
-/// - candle_body
-/// - upper_wick
-/// - lower_wick
-/// - candle_range
-/// - volume_ratio
-/// - volume_change
-/// - volume_ema_ratio_12_26
-/// - volume_spike_14
-/// - average_true_range_14
-/// - average_directional_index_14
-/// - on_balance_volume
+/// Processes the input data into features.
 pub fn process(
     opens: &[f32],
     closes: &[f32],
@@ -103,45 +91,49 @@ pub fn process(
     );
 
     let lr1 = log_return(closes, 1);
+    let lr2 = log_return(closes, 2);
     let lr3 = log_return(closes, 3);
-    let lr5 = log_return(closes, 5);
-    let lr10 = log_return(closes, 10);
 
+    let vol2 = rolling_std(&lr1, 2);
     let vol5 = rolling_std(&lr1, 5);
     let vol10 = rolling_std(&lr1, 10);
-    let vol20 = rolling_std(&lr1, 20);
 
+    let sma3 = sma_ratio(closes, 3);
     let sma5 = sma_ratio(closes, 5);
-    let sma10 = sma_ratio(closes, 10);
+    let ema5 = ema_ratio(closes, 5);
     let ema12 = ema_ratio(closes, 12);
-    let ema26 = ema_ratio(closes, 26);
 
     let (body, upper, lower, range) = candle_features(opens, closes, highs, lows);
 
-    let vol_ratio = volume_ratio(volumes, 20);
+    let vol_ratio = volume_ratio(volumes, 14);
     let vol_change = volume_change(volumes);
-    let vol_ema_rat = volume_ema_ratio(volumes, 12, 26);
-    let vol_spike = volume_spike(volumes, 14);
+    let vol_ema_rat = volume_ema_ratio(volumes, 8, 12);
+    let vol_spike = volume_spike(volumes, 8);
 
-    let atr14 = atr(highs, lows, closes, 14);
-    let adx14 = adx(highs, lows, closes, 14);
+    let atr7 = atr(highs, lows, closes, 7);
+    let adx3 = adx(highs, lows, closes, 3);
     let obv = obv(closes, volumes);
+    let z_score_price_vs_sma = z_score_price_vs_sma(closes, 12);
+    let bollinger_band_pos = bollinger_position(closes, 12);
+    let volat_regime = volatility_regime(&lr1, 10, 20);
+    let trend_strength_vs_noise = trend_strength_vs_noise(closes, highs, lows, 8, 12, 10);
+    let rsi5 = rsi(closes, 5);
+    let macd_hist = macd_histogram(closes, 5, 12, 3);
 
     let mut out = vec![[0.0; FEATURE_SIZE]; n];
 
     for i in 0..n {
         out[i] = [
             lr1[i],
+            lr2[i],
             lr3[i],
-            lr5[i],
-            lr10[i],
+            vol2[i],
             vol5[i],
             vol10[i],
-            vol20[i],
+            sma3[i],
             sma5[i],
-            sma10[i],
+            ema5[i],
             ema12[i],
-            ema26[i],
             body[i],
             upper[i],
             lower[i],
@@ -150,9 +142,15 @@ pub fn process(
             vol_change[i],
             vol_ema_rat[i],
             vol_spike[i],
-            atr14[i],
-            adx14[i],
+            atr7[i],
+            adx3[i],
             obv[i],
+            z_score_price_vs_sma[i],
+            bollinger_band_pos[i],
+            volat_regime[i],
+            trend_strength_vs_noise[i],
+            rsi5[i],
+            macd_hist[i],
         ];
     }
 
@@ -489,4 +487,180 @@ fn obv(closes: &[f32], volumes: &[f32]) -> Vec<f32> {
             };
     }
     obv
+}
+
+/// Computes the Z-score of the current price relative to a rolling SMA:
+/// `z_t = (Close_t - mean(Close_{t-window..t-1})) / std(Close_{t-window..t-1})`
+///
+/// The first `window` timesteps are set to 0.0.
+fn z_score_price_vs_sma(closes: &[f32], window: usize) -> Vec<f32> {
+    let n = closes.len();
+    let mut out = vec![0.0; n];
+
+    for i in window..n {
+        let slice = &closes[i - window..i];
+
+        let mean = slice.iter().sum::<f32>() / window as f32;
+        let var = slice.iter().map(|v| (v - mean).powi(2)).sum::<f32>() / window as f32;
+        let std = var.sqrt().max(EPS);
+
+        out[i] = (closes[i] - mean) / std;
+    }
+
+    out
+}
+
+/// Computes normalized position of price inside Bollinger Bands: `BB_Pos_t = (Close_t - SMA_t) / (2 * std_t)`
+///
+/// The first `window` timesteps are set to 0.0.
+fn bollinger_position(closes: &[f32], window: usize) -> Vec<f32> {
+    let n = closes.len();
+    let mut out = vec![0.0; n];
+
+    for i in window..n {
+        let slice = &closes[i - window..i];
+
+        let mean = slice.iter().sum::<f32>() / window as f32;
+        let var = slice.iter().map(|v| (v - mean).powi(2)).sum::<f32>() / window as f32;
+        let std = var.sqrt().max(EPS);
+
+        out[i] = (closes[i] - mean) / (2.0 * std);
+    }
+
+    out
+}
+
+/// Measures short-term volatility relative to long-term volatility: `regime_t = std_short(returns) / std_long(returns)`
+///
+/// The first `long` timesteps are set to 0.0.
+fn volatility_regime(returns: &[f32], short: usize, long: usize) -> Vec<f32> {
+    let short_std = rolling_std(returns, short);
+    let long_std = rolling_std(returns, long);
+
+    short_std
+        .iter()
+        .zip(long_std.iter())
+        .map(|(s, l)| s / l.max(EPS))
+        .collect()
+}
+
+/// Measures directional trend strength relative to market noise (ATR): `TrendNoise_t = |SMA_short - SMA_long| / ATR`
+///
+/// The first `long` timesteps are set to 0.0.
+fn trend_strength_vs_noise(
+    closes: &[f32],
+    highs: &[f32],
+    lows: &[f32],
+    short: usize,
+    long: usize,
+    atr_window: usize,
+) -> Vec<f32> {
+    let n = closes.len();
+    let mut out = vec![0.0; n];
+
+    let sma_short = rolling_mean(closes, short);
+    let sma_long = rolling_mean(closes, long);
+    let atr_vals = atr(highs, lows, closes, atr_window);
+
+    for i in 0..n {
+        out[i] = (sma_short[i] - sma_long[i]).abs() / atr_vals[i].max(EPS);
+    }
+
+    out
+}
+
+/// Computes the Relative Strength Index using Wilder's smoothing:
+/// ```text
+/// RS  = AvgGain / AvgLoss
+/// RSI = 100 - (100 / (1 + RS))
+/// ```
+///
+/// The first `window` timesteps are set to 0.0.
+fn rsi(closes: &[f32], window: usize) -> Vec<f32> {
+    let n = closes.len();
+    let mut out = vec![0.0; n];
+
+    if n <= window {
+        return out;
+    }
+
+    let mut gains = vec![0.0; n];
+    let mut losses = vec![0.0; n];
+
+    for i in 1..n {
+        let diff = closes[i] - closes[i - 1];
+        if diff > 0.0 {
+            gains[i] = diff;
+        } else {
+            losses[i] = -diff;
+        }
+    }
+
+    // Initial SMA
+    let mut avg_gain = gains[1..=window].iter().sum::<f32>() / window as f32;
+    let mut avg_loss = losses[1..=window].iter().sum::<f32>() / window as f32;
+
+    let compute_rsi = |g: f32, l: f32| {
+        if l == 0.0 {
+            100.0
+        } else {
+            let rs = g / l;
+            100.0 - 100.0 / (1.0 + rs)
+        }
+    };
+
+    out[window] = compute_rsi(avg_gain, avg_loss);
+
+    for i in (window + 1)..n {
+        avg_gain = (avg_gain * (window as f32 - 1.0) + gains[i]) / window as f32;
+        avg_loss = (avg_loss * (window as f32 - 1.0) + losses[i]) / window as f32;
+
+        out[i] = compute_rsi(avg_gain, avg_loss);
+    }
+
+    // ML scaling (better distribution)
+    out.iter()
+        .map(|v| ((v - 50.0) / 25.0).clamp(-2.0, 2.0))
+        .collect()
+}
+
+/// Computes the MACD histogram for a series of closing prices.
+///
+/// The first `long_window` entries are set to 0.0
+pub fn macd_histogram(
+    closes: &[f32],
+    short_window: usize,
+    long_window: usize,
+    signal_window: usize,
+) -> Vec<f32> {
+    let n = closes.len();
+    let mut hist = vec![0.0; n];
+
+    if n == 0 || long_window == 0 || short_window == 0 || signal_window == 0 {
+        return hist;
+    }
+
+    let ema_short = ema_ratio(closes, short_window);
+    let ema_long = ema_ratio(closes, long_window);
+
+    let macd_line: Vec<f32> = ema_short
+        .iter()
+        .zip(&ema_long)
+        .map(|(s, l)| s - l)
+        .collect();
+
+    let mut signal_line = vec![0.0; n];
+    if n > signal_window {
+        let alpha = 2.0 / (signal_window as f32 + 1.0);
+        signal_line[signal_window - 1] = macd_line[signal_window - 1];
+        for i in signal_window..n {
+            signal_line[i] = alpha * macd_line[i] + (1.0 - alpha) * signal_line[i - 1];
+        }
+    }
+
+    for i in 0..n {
+        hist[i] = macd_line[i] - signal_line[i];
+    }
+
+    hist
 }

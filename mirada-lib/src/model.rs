@@ -1,6 +1,5 @@
 use crate::batcher::DataBatch;
 use crate::consts::TOTAL_FEATURE_SIZE;
-use crate::residual::{ResidualBlock, ResidualBlockConfig};
 use burn::Tensor;
 use burn::config::Config;
 use burn::module::Module;
@@ -26,7 +25,6 @@ pub struct Model<B: Backend> {
     lin2: Linear<B>,
     glu: SwiGlu<B>,
     norm: LayerNorm<B>,
-    blocks: Vec<ResidualBlock<B>>,
     lin3: Linear<B>,
     lin4: Linear<B>,
 }
@@ -39,13 +37,7 @@ impl<B: Backend> Model<B> {
         x = self.norm.forward(x);
         x = self.lin2.forward(x);
         x = self.glu.forward(x);
-
         x = self.dropout.forward(x);
-
-        for block in &self.blocks {
-            x = block.forward(x);
-        }
-
         x = self.lin3.forward(x);
         x = self.act.forward(x);
         x = self.dropout.forward(x);
@@ -100,27 +92,13 @@ pub struct ModelConfig {
     #[config(default = 128)]
     pub hidden_dim: usize,
 
-    /// Number of residual blocks.
-    #[config(default = 5)]
-    pub num_residual_blocks: usize,
-
     /// Dropout probability.
-    #[config(default = 0.1)]
+    #[config(default = 0.2)]
     pub dropout: f64,
 }
 
 impl ModelConfig {
     pub fn init<B: Backend>(&self, device: &B::Device) -> Model<B> {
-        let blocks = (0..self.num_residual_blocks)
-            .map(|_| {
-                ResidualBlockConfig {
-                    hidden_dim: self.hidden_dim,
-                    dropout: self.dropout,
-                }
-                .init(device)
-            })
-            .collect();
-
         Model {
             loss: CrossEntropyLossConfig::new()
                 .with_logits(true)
@@ -132,7 +110,6 @@ impl ModelConfig {
             lin2: LinearConfig::new(self.hidden_dim, self.hidden_dim * 2).init(device), // expand to hidden_dim * 2
             glu: SwiGluConfig::new(self.hidden_dim * 2, self.hidden_dim).init(device), // compress back to hidden_dim
             norm: LayerNormConfig::new(self.hidden_dim).init(device),
-            blocks,
             lin3: LinearConfig::new(self.hidden_dim, self.hidden_dim).init(device),
             lin4: LinearConfig::new(self.hidden_dim, 2).init(device), // 2 classes: up/down
         }

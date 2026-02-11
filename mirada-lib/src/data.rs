@@ -36,7 +36,7 @@ impl Display for DataKey {
 pub struct StockData {
     features: FloatSerdeTensor<2>,
     targets: IntSerdeTensor<1>,
-    last_close: f32,
+    time: (OffsetDateTime, OffsetDateTime),
 }
 
 impl StockData {
@@ -46,11 +46,26 @@ impl StockData {
         volumes: Vec<f32>,
         highs: Vec<f32>,
         lows: Vec<f32>,
+        time: (OffsetDateTime, OffsetDateTime),
         train: bool,
     ) -> Self {
         let n = closes.len();
-        let last_close = *closes.last().expect("No closes provided");
+        assert!(n > 0, "Empty input series");
 
+        assert!(
+            opens.len() == n && volumes.len() == n && highs.len() == n && lows.len() == n,
+            "OHLCV series must already be date-aligned"
+        );
+
+        for i in 0..n {
+            assert!(opens[i].is_finite(), "Open data [{i}] must be finite");
+            assert!(closes[i].is_finite(), "Close data [{i}] must be finite");
+            assert!(volumes[i].is_finite(), "Volume data [{i}] must be finite");
+            assert!(highs[i].is_finite(), "High data [{i}] must be finite");
+            assert!(lows[i].is_finite(), "Low data [{i}] must be finite");
+        }
+
+        // minimum amount of history needed before producing valid features
         let skip = ROLLING_WINDOW.max(SKIPPED_TIMESTEPS);
 
         assert!(
@@ -61,76 +76,77 @@ impl StockData {
             n
         );
 
-        // Total usable supervised samples
-        let usable = n - skip - HORIZON;
+        // make features only see past data (if training)
+        let feature_end = if train { n - HORIZON } else { n };
 
-        // -------- FEATURES --------
-        let raw_features = process(&opens, &closes, &volumes, &highs, &lows);
-        log::debug!("Processed data into {} feature items", raw_features.len());
-
-        let norm_features = normalize(&raw_features); // length = n - skip
-        log::debug!("Normalized data into {} feature items", norm_features.len());
-
-        assert!(
-            norm_features.len() >= usable,
-            "Normalized features too short: {} < usable {}",
-            norm_features.len(),
-            usable
+        let raw_features = process(
+            &opens[..feature_end],
+            &closes[..feature_end],
+            &volumes[..feature_end],
+            &highs[..feature_end],
+            &lows[..feature_end],
         );
 
-        // features[i] corresponds to time t = skip + i
-        let features: Vec<[f32; FEATURE_SIZE]> = norm_features[..usable].to_vec();
+        assert_eq!(
+            raw_features.len(),
+            feature_end,
+            "Feature pipeline changed series length → misalignment risk"
+        );
 
-        // -------- TARGETS --------
-        let targets_data = if train {
+        let norm_features = normalize(&raw_features);
+
+        // only keep timesteps after initial skip to have enough history
+        let features: Vec<[f32; FEATURE_SIZE]> = norm_features[skip..].to_vec();
+
+        let targets = if train {
             let all_targets = generate_targets(&closes, HORIZON);
-            // all_targets[t] corresponds to time t
 
-            let targets = all_targets[skip..skip + usable].to_vec();
+            // only take targets aligned with features (skip first `skip` timesteps)
+            let targets_data = all_targets[skip..feature_end].to_vec();
 
             assert_eq!(
                 features.len(),
-                targets.len(),
-                "Feature/target misalignment: {} vs {}",
-                features.len(),
-                targets.len()
+                targets_data.len(),
+                "Features and targets must have the same size"
             );
 
-            targets
-        } else {
-            Vec::new()
-        };
-
-        log::info!(
-            "Final dataset: {} samples, {} features each",
-            features.len(),
-            FEATURE_SIZE
-        );
-
-        // Flatten features
-        let flat_features: Vec<f32> = features.iter().flat_map(|x| x.iter()).copied().collect();
-
-        let targets = if train {
             IntSerdeTensor::new([features.len()], targets_data)
         } else {
             IntSerdeTensor::none()
         };
 
+        // flatten features for storage
+        let flat_features: Vec<f32> = features
+            .iter()
+            .flat_map(|row| row.iter())
+            .copied()
+            .collect();
+
+        log::info!(
+            "Final dataset: {} samples with {} features (train={})",
+            features.len(),
+            FEATURE_SIZE,
+            train
+        );
+
         Self {
             features: FloatSerdeTensor::new([features.len(), FEATURE_SIZE], flat_features),
             targets,
-            last_close,
+            time,
         }
-    }
-
-    pub fn last_close(&self) -> f32 {
-        self.last_close
     }
 
     /// Merges the **features** from `other` into this [StockData].
     ///
     /// Does not merge targets, last closes or last rolling volatility, since it wouldn't make sense to do so.
     pub fn merge<B: Backend>(self, others: Vec<StockData>, device: &B::Device) -> Self {
+        for other in &others {
+            assert_eq!(
+                self.time, other.time,
+                "All stocks must have the same start and end date"
+            );
+        }
+
         assert_eq!(
             others.len(),
             OTHER_STOCKS,
@@ -168,7 +184,7 @@ impl StockData {
         Self {
             features: FloatSerdeTensor::from_tensor(Tensor::cat(merged, 1)),
             targets: self.targets,
-            last_close: self.last_close,
+            time: self.time,
         }
     }
 
@@ -177,6 +193,14 @@ impl StockData {
             self.features.to_tensor(device),
             self.targets.to_tensor(device),
         )
+    }
+
+    pub fn features(&self) -> &FloatSerdeTensor<2> {
+        &self.features
+    }
+
+    pub fn targets(&self) -> &IntSerdeTensor<1> {
+        &self.targets
     }
 }
 

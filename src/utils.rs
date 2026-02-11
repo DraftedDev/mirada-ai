@@ -3,6 +3,7 @@ use std::fmt::Debug;
 use std::str::FromStr;
 use std::time::Duration;
 use time::format_description::BorrowedFormatItem;
+use trading_calendar::NaiveDate;
 use yahoo_finance_api::time::Date;
 use yahoo_finance_api::{YahooConnector, YahooConnectorBuilder};
 
@@ -10,6 +11,18 @@ pub const CHRONO_DATE_FORMAT: &str = "%d.%m.%Y";
 
 pub const DATE_FORMAT: &[BorrowedFormatItem] =
     time::macros::format_description!("[day].[month].[year]");
+
+pub fn naive_to_date(naive: NaiveDate) -> Date {
+    parse_date(&naive.format(CHRONO_DATE_FORMAT).to_string())
+}
+
+pub fn date_to_naive(date: Date) -> NaiveDate {
+    NaiveDate::parse_from_str(
+        date.format(DATE_FORMAT).unwrap().as_str(),
+        CHRONO_DATE_FORMAT,
+    )
+    .unwrap()
+}
 
 pub fn parse_date(input: &str) -> Date {
     Date::parse(input, DATE_FORMAT).expect("Failed to parse date")

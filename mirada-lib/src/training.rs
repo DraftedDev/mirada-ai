@@ -61,12 +61,12 @@ impl<B: AutodiffBackend> Model<B> {
         let learner = Learner::new(self.clone(), optimizer, lr_scheduler);
 
         let training = SupervisedTraining::new(artifacts, train_dataloader, valid_dataloader)
+            .metric_train_numeric(AccuracyMetric::new())
+            .metric_valid_numeric(AccuracyMetric::new())
             .metric_train_numeric(LossMetric::new())
             .metric_valid_numeric(LossMetric::new())
             .metric_train_numeric(LearningRateMetric::new())
             .metric_valid_numeric(LearningRateMetric::new())
-            .metric_train_numeric(AccuracyMetric::new())
-            .metric_valid_numeric(AccuracyMetric::new())
             .with_file_checkpointer(recorder.clone())
             .with_training_strategy(TrainingStrategy::SingleDevice(device))
             .num_epochs(config.num_epochs)

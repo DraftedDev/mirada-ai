@@ -1,4 +1,6 @@
-use crate::consts::{FEATURE_SIZE, HORIZON, OTHER_STOCKS, ROLLING_WINDOW, SKIPPED_TIMESTEPS};
+use crate::consts::{
+    FEATURE_SIZE, HORIZON, OTHER_STOCKS, ROLLING_WINDOW, SKIPPED_TIMESTEPS, TEMP_WINDOWS,
+};
 use crate::math::{generate_targets, normalize, process};
 use burn::Tensor;
 use burn::prelude::Backend;
@@ -34,7 +36,7 @@ impl Display for DataKey {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StockData {
-    features: FloatSerdeTensor<2>,
+    features: FloatSerdeTensor<3>,
     targets: IntSerdeTensor<1>,
     time: (OffsetDateTime, OffsetDateTime),
 }
@@ -52,11 +54,11 @@ impl StockData {
         let n = closes.len();
         assert!(n > 0, "Empty input series");
 
+        // Validate all OHLCV inputs
         assert!(
             opens.len() == n && volumes.len() == n && highs.len() == n && lows.len() == n,
             "OHLCV series must already be date-aligned"
         );
-
         for i in 0..n {
             assert!(opens[i].is_finite(), "Open data [{i}] must be finite");
             assert!(closes[i].is_finite(), "Close data [{i}] must be finite");
@@ -65,72 +67,93 @@ impl StockData {
             assert!(lows[i].is_finite(), "Low data [{i}] must be finite");
         }
 
-        // minimum amount of history needed before producing valid features
+        // Minimum history needed
         let skip = ROLLING_WINDOW.max(SKIPPED_TIMESTEPS);
-
         assert!(
-            n > skip + HORIZON,
-            "Not enough timesteps: need > skip({}) + horizon({}), got {}",
+            n > skip + HORIZON + TEMP_WINDOWS - 1,
+            "Not enough timesteps: need > skip({}) + horizon({}) + TEMP_WINDOWS({}), got {}",
             skip,
             HORIZON,
+            TEMP_WINDOWS,
             n
         );
 
-        // make features only see past data (if training)
+        // Cutoff for features (causal)
         let feature_end = if train { n - HORIZON } else { n };
 
-        let raw_features = process(
+        // Process & normalize features
+        let mut features = process(
             &opens[..feature_end],
             &closes[..feature_end],
             &volumes[..feature_end],
             &highs[..feature_end],
             &lows[..feature_end],
         );
+        features = normalize(&features);
 
-        assert_eq!(
-            raw_features.len(),
-            feature_end,
-            "Feature pipeline changed series length → misalignment risk"
+        // Keep only timesteps after skip
+        let features = &features[skip..feature_end];
+        let n_days = features.len();
+        assert!(
+            n_days >= TEMP_WINDOWS,
+            "Not enough timesteps ({n_days}) after skip for TEMP_WINDOWS ({TEMP_WINDOWS})"
         );
 
-        let norm_features = normalize(&raw_features);
+        let n_samples = n_days - TEMP_WINDOWS + 1;
 
-        // only keep timesteps after initial skip to have enough history
-        let features: Vec<[f32; FEATURE_SIZE]> = norm_features[skip..].to_vec();
+        // Build temporal windows (3D)
+        let mut windows: Vec<f32> = Vec::with_capacity(n_samples * TEMP_WINDOWS * FEATURE_SIZE);
+        for t in 0..n_samples {
+            for w in 0..TEMP_WINDOWS {
+                windows.extend_from_slice(&features[t + w]);
+            }
+        }
 
+        // Generate targets aligned with the **end of each temporal window**
         let targets = if train {
             let all_targets = generate_targets(&closes, HORIZON);
 
-            // only take targets aligned with features (skip first `skip` timesteps)
-            let targets_data = all_targets[skip..feature_end].to_vec();
+            // The first usable feature row corresponds to index `skip` in closes
+            let first_feature_idx = skip;
+            let targets_data: Vec<i32> = (0..n_samples)
+                .map(|i| all_targets[first_feature_idx + i + TEMP_WINDOWS - 1])
+                .collect();
 
-            assert_eq!(
-                features.len(),
-                targets_data.len(),
-                "Features and targets must have the same size"
+            // Log target distribution
+            let up_count = targets_data.iter().filter(|&&t| t == 1).count();
+            let down_count = targets_data.len() - up_count;
+            log::info!(
+                "Data Targets: Up ({}), Down ({}) Ratio: ({:.2})",
+                up_count,
+                down_count,
+                up_count as f32 / down_count as f32
             );
 
-            IntSerdeTensor::new([features.len()], targets_data)
+            IntSerdeTensor::new([n_samples], targets_data)
         } else {
             IntSerdeTensor::none()
         };
 
-        // flatten features for storage
-        let flat_features: Vec<f32> = features
-            .iter()
-            .flat_map(|row| row.iter())
-            .copied()
-            .collect();
-
         log::info!(
-            "Final dataset: {} samples with {} features (train={})",
-            features.len(),
+            "Final dataset: {} temporal windows, each with {} timesteps and {} features (train={})",
+            n_samples,
+            TEMP_WINDOWS,
             FEATURE_SIZE,
             train
         );
 
+        let feature_width = features[0].len();
+        let expected_len = n_samples * TEMP_WINDOWS * feature_width;
+        assert_eq!(
+            windows.len(),
+            expected_len,
+            "Window data size mismatch: got {}, expected {}",
+            windows.len(),
+            expected_len
+        );
+
         Self {
-            features: FloatSerdeTensor::new([features.len(), FEATURE_SIZE], flat_features),
+            features: FloatSerdeTensor::new([n_samples, TEMP_WINDOWS, feature_width], windows),
             targets,
             time,
         }
@@ -138,7 +161,7 @@ impl StockData {
 
     /// Merges the **features** from `other` into this [StockData].
     ///
-    /// Does not merge targets, last closes or last rolling volatility, since it wouldn't make sense to do so.
+    /// Does not merge targets and time since it wouldn't make sense to do so.
     pub fn merge<B: Backend>(self, others: Vec<StockData>, device: &B::Device) -> Self {
         for other in &others {
             assert_eq!(
@@ -159,43 +182,44 @@ impl StockData {
             panic!("Other stocks features cannot have zero size");
         }
 
-        let mut merged = Vec::with_capacity(others.len() + 1);
+        let shape = self.features.shape.clone();
 
-        let other_features = others
-            .into_iter()
-            .map(|data| {
-                assert_eq!(
-                    self.features.shape[0], data.features.shape[0],
-                    "All stocks must have the same number of timesteps"
-                );
+        // Convert self features to tensor
+        let mut merged = vec![self.features.to_tensor::<B>(device)];
 
-                data.features.to_tensor::<B>(device)
-            })
-            .collect::<Vec<_>>();
+        // Convert other stocks' features to tensors and collect
+        for data in others.into_iter() {
+            assert_eq!(
+                shape[0], data.features.shape[0],
+                "All stocks must have the same number of timesteps"
+            );
+            let t = data.features.to_tensor::<B>(device);
+            assert_eq!(
+                t.dims().len(),
+                3,
+                "Expected 3D tensor for temporal windows [n_samples, TEMP_WINDOWS, FEATURE_SIZE]"
+            );
+            merged.push(t);
+        }
 
-        merged.push(self.features.to_tensor(device));
-        merged.extend(other_features);
-
-        assert!(
-            merged.iter().all(|t| t.dims()[1] > 0),
-            "Attempted to merge a tensor with zero size"
-        );
+        // Concatenate along the feature dimension (last axis)
+        let cat_features = Tensor::cat(merged, 2); // dim=2 = feature axis
 
         Self {
-            features: FloatSerdeTensor::from_tensor(Tensor::cat(merged, 1)),
+            features: FloatSerdeTensor::from_tensor(cat_features),
             targets: self.targets,
             time: self.time,
         }
     }
 
-    pub fn into_tensors<B: Backend>(self, device: &B::Device) -> (Tensor<B, 2>, Tensor<B, 1, Int>) {
+    pub fn into_tensors<B: Backend>(self, device: &B::Device) -> (Tensor<B, 3>, Tensor<B, 1, Int>) {
         (
             self.features.to_tensor(device),
             self.targets.to_tensor(device),
         )
     }
 
-    pub fn features(&self) -> &FloatSerdeTensor<2> {
+    pub fn features(&self) -> &FloatSerdeTensor<3> {
         &self.features
     }
 

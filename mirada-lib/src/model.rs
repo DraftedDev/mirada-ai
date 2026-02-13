@@ -5,8 +5,8 @@ use burn::config::Config;
 use burn::module::Module;
 use burn::nn::loss::{CrossEntropyLoss, CrossEntropyLossConfig};
 use burn::nn::{
-    Dropout, DropoutConfig, Gelu, LayerNorm, LayerNormConfig, Linear, LinearConfig, SwiGlu,
-    SwiGluConfig,
+    Dropout, DropoutConfig, Gelu, LayerNorm, LayerNormConfig, Linear, LinearConfig, Lstm,
+    LstmConfig,
 };
 use burn::prelude::Backend;
 use burn::record::CompactRecorder;
@@ -19,34 +19,37 @@ use std::path::Path;
 #[derive(Debug, Module)]
 pub struct Model<B: Backend> {
     loss: CrossEntropyLoss<B>,
-    act: Gelu,
+    lstm1: Lstm<B>,
+    lstm2: Lstm<B>,
     dropout: Dropout,
-    lin1: Linear<B>,
-    lin2: Linear<B>,
-    glu: SwiGlu<B>,
     norm: LayerNorm<B>,
-    lin3: Linear<B>,
-    lin4: Linear<B>,
+    act: Gelu,
+    lin: Linear<B>,
 }
 
 impl<B: Backend> Model<B> {
-    pub fn forward(&self, input: Tensor<B, 2>) -> Tensor<B, 2> {
-        let mut x = self.lin1.forward(input);
-        x = self.act.forward(x);
-        x = self.dropout.forward(x);
-        x = self.norm.forward(x);
-        x = self.lin2.forward(x);
-        x = self.glu.forward(x);
-        x = self.dropout.forward(x);
-        x = self.lin3.forward(x);
-        x = self.act.forward(x);
-        x = self.dropout.forward(x);
-        self.lin4.forward(x)
+    pub fn forward(&self, x: Tensor<B, 3>) -> Tensor<B, 2> {
+        let (x, _) = self.lstm1.forward(x, None);
+        let (x, state2) = self.lstm2.forward(x, None);
+
+        // Mean over timesteps -> result likely has shape [batch, 1, hidden], so squeeze the middle dim
+        let x_mean = x.mean_dim(1).squeeze_dim::<2>(1); // -> [batch, hidden]
+
+        // state2.hidden is already [batch, hidden]
+        let last_layer_h = state2.hidden; // -> [batch, hidden]
+
+        // Concatenate along feature axis -> [batch, hidden*2]
+        let x = Tensor::cat(vec![last_layer_h, x_mean], 1);
+
+        let x = self.dropout.forward(x);
+        let x = self.norm.forward(x);
+        let x = self.act.forward(x);
+        self.lin.forward(x)
     }
 
     pub fn forward_classification(
         &self,
-        input: Tensor<B, 2>,
+        input: Tensor<B, 3>,
         target: Tensor<B, 1, Int>,
     ) -> ClassificationOutput<B> {
         let out = self.forward(input);
@@ -94,9 +97,9 @@ pub struct ModelConfig {
     #[config(default = 0.05)]
     pub loss_smoothing: f32,
 
-    /// Hidden dimension for Linear and SwiGLU layers.
+    /// Hidden size of layers like Linear and Lstm.
     #[config(default = 128)]
-    pub hidden_dim: usize,
+    pub hidden_size: usize,
 
     /// Dropout probability.
     #[config(default = 0.2)]
@@ -110,14 +113,12 @@ impl ModelConfig {
                 .with_logits(true)
                 .with_smoothing(Some(self.loss_smoothing))
                 .init(device),
-            act: Gelu::new(),
+            lstm1: LstmConfig::new(TOTAL_FEATURE_SIZE, self.hidden_size, true).init(device),
+            lstm2: LstmConfig::new(self.hidden_size, self.hidden_size, true).init(device),
             dropout: DropoutConfig::new(self.dropout).init(),
-            lin1: LinearConfig::new(TOTAL_FEATURE_SIZE, self.hidden_dim).init(device),
-            lin2: LinearConfig::new(self.hidden_dim, self.hidden_dim * 2).init(device), // expand to hidden_dim * 2
-            glu: SwiGluConfig::new(self.hidden_dim * 2, self.hidden_dim).init(device), // compress back to hidden_dim
-            norm: LayerNormConfig::new(self.hidden_dim).init(device),
-            lin3: LinearConfig::new(self.hidden_dim, self.hidden_dim).init(device),
-            lin4: LinearConfig::new(self.hidden_dim, 2).init(device), // 2 classes: up/down
+            norm: LayerNormConfig::new(self.hidden_size * 2).init(device),
+            act: Gelu,
+            lin: LinearConfig::new(self.hidden_size * 2, 2).init(device),
         }
     }
 

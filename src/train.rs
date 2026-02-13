@@ -47,8 +47,8 @@ pub fn train(
 
     let model: Model<AutodiffBackend> = if cleanup {
         log::info!("Cleaning up artifact directory...");
-        std::fs::remove_dir(&artifacts).ok();
-        std::fs::create_dir_all(&artifacts).ok();
+        std::fs::remove_dir_all(&artifacts).expect("Failed to cleanup artifacts directory");
+        std::fs::create_dir_all(&artifacts).expect("Failed to create artifacts directory");
 
         model_cfg.init(&device)
     } else {

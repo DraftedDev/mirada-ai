@@ -19,13 +19,91 @@ pub fn generate_targets(closes: &[f32], horizon: usize) -> Vec<i32> {
         let fut = closes[t + horizon].max(EPS);
 
         let ret = (fut / curr).ln();
-
         let target = if ret > THRESHOLD { 1 } else { 0 };
 
         targets.push(target);
     }
 
     targets
+}
+
+/// Processes the raw input data into features.
+pub fn process(
+    opens: &[f32],
+    closes: &[f32],
+    volumes: &[f32],
+    highs: &[f32],
+    lows: &[f32],
+) -> Vec<[f32; FEATURE_SIZE]> {
+    let n = closes.len();
+
+    assert!(
+        opens.len() == n && volumes.len() == n && highs.len() == n && lows.len() == n,
+        "Input vectors must have the same length"
+    );
+
+    assert!(
+        n > SKIPPED_TIMESTEPS,
+        "Not enough timesteps: need {}, got {}",
+        SKIPPED_TIMESTEPS,
+        n
+    );
+
+    let lr1 = log_return(closes, 1);
+    let lr2 = log_return(closes, 2);
+    let lr3 = log_return(closes, 3);
+
+    let vol1 = rolling_std(&lr1, 1);
+    let vol2 = rolling_std(&lr1, 2);
+
+    let ema3 = ema_ratio(closes, 3);
+    let ema5 = ema_ratio(closes, 5);
+    let ema_diff = ema5
+        .iter()
+        .zip(&ema3)
+        .map(|(e5, e3)| *e5 - *e3)
+        .collect::<Vec<_>>();
+
+    let (body, upper, lower, range) = candle_features(opens, closes, highs, lows);
+
+    let vol_ratio = volume_ratio(volumes, 7);
+    let vol_spike = volume_spike(volumes, 5);
+
+    let obv = obv(closes, volumes);
+    let z_score_price_vs_sma = z_score_price_vs_sma(closes, 5);
+    let volat_regime = volatility_regime(&lr1, 5, 10);
+    let trend_strength_vs_noise = trend_strength_vs_noise(closes, highs, lows, 3, 5, 4);
+    let rsi = rsi(closes, 3);
+    let macd_hist = macd_histogram(closes, 3, 6, 2);
+
+    let mut out = vec![[0.0; FEATURE_SIZE]; n];
+
+    for i in 0..n {
+        out[i] = [
+            lr1[i],
+            lr2[i],
+            lr3[i],
+            vol1[i],
+            vol2[i],
+            ema3[i],
+            ema5[i],
+            ema_diff[i],
+            body[i],
+            upper[i],
+            lower[i],
+            range[i],
+            vol_ratio[i],
+            vol_spike[i],
+            obv[i],
+            z_score_price_vs_sma[i],
+            volat_regime[i],
+            trend_strength_vs_noise[i],
+            rsi[i],
+            macd_hist[i],
+        ];
+    }
+
+    out
 }
 
 /// Normalize the output from [process] into rolling mean/std and clipped data.
@@ -63,95 +141,6 @@ pub fn normalize(features: &[[f32; FEATURE_SIZE]]) -> Vec<[f32; FEATURE_SIZE]> {
         for f in 0..FEATURE_SIZE {
             out[t][f] = ((features[t][f] - mean[f]) / std[f]).clamp(-CLIP, CLIP);
         }
-    }
-
-    out
-}
-
-/// Processes the input data into features.
-pub fn process(
-    opens: &[f32],
-    closes: &[f32],
-    volumes: &[f32],
-    highs: &[f32],
-    lows: &[f32],
-) -> Vec<[f32; FEATURE_SIZE]> {
-    let n = closes.len();
-
-    assert!(
-        opens.len() == n && volumes.len() == n && highs.len() == n && lows.len() == n,
-        "Input vectors must have the same length"
-    );
-
-    assert!(
-        n > SKIPPED_TIMESTEPS,
-        "Not enough timesteps: need {}, got {}",
-        SKIPPED_TIMESTEPS,
-        n
-    );
-
-    let lr1 = log_return(closes, 1);
-    let lr2 = log_return(closes, 2);
-    let lr3 = log_return(closes, 3);
-
-    let vol2 = rolling_std(&lr1, 2);
-    let vol5 = rolling_std(&lr1, 5);
-    let vol10 = rolling_std(&lr1, 10);
-
-    let sma3 = sma_ratio(closes, 3);
-    let sma5 = sma_ratio(closes, 5);
-    let ema5 = ema_ratio(closes, 5);
-    let ema12 = ema_ratio(closes, 12);
-
-    let (body, upper, lower, range) = candle_features(opens, closes, highs, lows);
-
-    let vol_ratio = volume_ratio(volumes, 14);
-    let vol_change = volume_change(volumes);
-    let vol_ema_rat = volume_ema_ratio(volumes, 8, 12);
-    let vol_spike = volume_spike(volumes, 8);
-
-    let atr7 = atr(highs, lows, closes, 7);
-    let adx3 = adx(highs, lows, closes, 3);
-    let obv = obv(closes, volumes);
-    let z_score_price_vs_sma = z_score_price_vs_sma(closes, 12);
-    let bollinger_band_pos = bollinger_position(closes, 12);
-    let volat_regime = volatility_regime(&lr1, 10, 20);
-    let trend_strength_vs_noise = trend_strength_vs_noise(closes, highs, lows, 8, 12, 10);
-    let rsi5 = rsi(closes, 5);
-    let macd_hist = macd_histogram(closes, 5, 12, 3);
-
-    let mut out = vec![[0.0; FEATURE_SIZE]; n];
-
-    for i in 0..n {
-        out[i] = [
-            lr1[i],
-            lr2[i],
-            lr3[i],
-            vol2[i],
-            vol5[i],
-            vol10[i],
-            sma3[i],
-            sma5[i],
-            ema5[i],
-            ema12[i],
-            body[i],
-            upper[i],
-            lower[i],
-            range[i],
-            vol_ratio[i],
-            vol_change[i],
-            vol_ema_rat[i],
-            vol_spike[i],
-            atr7[i],
-            adx3[i],
-            obv[i],
-            z_score_price_vs_sma[i],
-            bollinger_band_pos[i],
-            volat_regime[i],
-            trend_strength_vs_noise[i],
-            rsi5[i],
-            macd_hist[i],
-        ];
     }
 
     out
@@ -227,22 +216,6 @@ pub fn rolling_mean(values: &[f32], window: usize) -> Vec<f32> {
     out
 }
 
-/// Compute the Simple Moving Average (SMA) over a given window size.
-///
-/// The first `window` entries are set to 0.0.
-fn sma_ratio(values: &[f32], window: usize) -> Vec<f32> {
-    let n = values.len();
-    let mut out = vec![0.0; n];
-
-    for i in window..n {
-        let slice = &values[i - window..i];
-        let mean = slice.iter().sum::<f32>() / window as f32;
-        out[i] = values[i].max(EPS) / mean;
-    }
-
-    out
-}
-
 /// Compute the Exponential Moving Average (EMA) over a given window size.
 fn ema_ratio(values: &[f32], window: usize) -> Vec<f32> {
     let n = values.len();
@@ -306,20 +279,6 @@ fn volume_ratio(volumes: &[f32], window: usize) -> Vec<f32> {
     out
 }
 
-/// Compute day-over-day log volume change: `log(volume[t] / volume[t-1])`
-///
-/// The first entry is set to 0.0.
-fn volume_change(volumes: &[f32]) -> Vec<f32> {
-    let n = volumes.len();
-    let mut out = vec![0.0; n];
-
-    for i in 1..n {
-        out[i] = (volumes[i] / volumes[i - 1].max(EPS)).ln();
-    }
-
-    out
-}
-
 /// Computes the Average True Range (ATR), a measure of volatility:
 ///
 /// ```text
@@ -340,101 +299,6 @@ fn atr(highs: &[f32], lows: &[f32], closes: &[f32], window: usize) -> Vec<f32> {
             .max((lows[i] - closes[i - 1]).abs());
     }
     rolling_mean(&tr, window) // or simple rolling mean instead of std
-}
-
-/// Computes the Average Directional Index (ADX), which measures trend strength:
-///
-/// ```text
-/// +DM_t = High_t - High_{t-1} if it's greater than |Low_t - Low_{t-1}| else 0
-/// -DM_t = Low_{t-1} - Low_t if it's greater than |High_t - High_{t-1}| else 0
-/// DX_t = |+DI_t - -DI_t| / (+DI_t + -DI_t)
-/// ADX_t = rolling_mean(DX, window)
-/// ```
-/// The first `window` timesteps are set to 0.0.
-pub fn adx(highs: &[f32], lows: &[f32], closes: &[f32], window: usize) -> Vec<f32> {
-    let n = highs.len();
-    let mut plus_dm = vec![0.0; n];
-    let mut minus_dm = vec![0.0; n];
-    let mut tr = vec![0.0; n];
-
-    for i in 1..n {
-        let up = highs[i] - highs[i - 1];
-        let down = lows[i - 1] - lows[i];
-
-        plus_dm[i] = if up > down && up > 0.0 { up } else { 0.0 };
-        minus_dm[i] = if down > up && down > 0.0 { down } else { 0.0 };
-
-        tr[i] = (highs[i] - lows[i])
-            .max((highs[i] - closes[i - 1]).abs())
-            .max((lows[i] - closes[i - 1]).abs());
-    }
-
-    let mut smoothed_tr = vec![0.0; n];
-    let mut smoothed_plus_dm = vec![0.0; n];
-    let mut smoothed_minus_dm = vec![0.0; n];
-
-    // initialize with simple sum over first `window` period
-    let sum_tr = tr[1..=window].iter().sum::<f32>();
-    let sum_plus = plus_dm[1..=window].iter().sum::<f32>();
-    let sum_minus = minus_dm[1..=window].iter().sum::<f32>();
-
-    smoothed_tr[window] = sum_tr;
-    smoothed_plus_dm[window] = sum_plus;
-    smoothed_minus_dm[window] = sum_minus;
-
-    for i in (window + 1)..n {
-        smoothed_tr[i] = smoothed_tr[i - 1] - (smoothed_tr[i - 1] / window as f32) + tr[i];
-        smoothed_plus_dm[i] =
-            smoothed_plus_dm[i - 1] - (smoothed_plus_dm[i - 1] / window as f32) + plus_dm[i];
-        smoothed_minus_dm[i] =
-            smoothed_minus_dm[i - 1] - (smoothed_minus_dm[i - 1] / window as f32) + minus_dm[i];
-    }
-
-    let mut plus_di = vec![0.0; n];
-    let mut minus_di = vec![0.0; n];
-
-    for i in window..n {
-        if smoothed_tr[i] > 0.0 {
-            plus_di[i] = smoothed_plus_dm[i] / smoothed_tr[i];
-            minus_di[i] = smoothed_minus_dm[i] / smoothed_tr[i];
-        }
-    }
-
-    let mut dx = vec![0.0; n];
-    for i in window..n {
-        let sum = plus_di[i] + minus_di[i];
-        if sum != 0.0 {
-            dx[i] = (plus_di[i] - minus_di[i]).abs() / sum;
-        }
-    }
-
-    let mut adx = vec![0.0; n];
-    adx[window] = dx[window..=window + window - 1].iter().sum::<f32>() / window as f32; // initial ADX
-
-    for i in (window + 1)..n {
-        adx[i] = ((adx[i - 1] * (window as f32 - 1.0)) + dx[i]) / window as f32;
-    }
-
-    adx
-}
-
-/// Computes the short-term vs long-term EMA ratio of volume:
-///
-/// ```text
-/// EMA_short_t = α * Volume_t + (1 - α) * EMA_{t-1}
-/// EMA_long_t  = α_long * Volume_t + (1 - α_long) * EMA_{t-1}
-/// Vol_EMA_Ratio_t = EMA_short_t / EMA_long_t
-/// ```
-///
-/// The first `long_window` timesteps are set to 0.0.
-fn volume_ema_ratio(volumes: &[f32], short_window: usize, long_window: usize) -> Vec<f32> {
-    let ema_short = ema_ratio(volumes, short_window);
-    let ema_long = ema_ratio(volumes, long_window);
-    ema_short
-        .iter()
-        .zip(&ema_long)
-        .map(|(s, l)| s / l.max(EPS))
-        .collect()
 }
 
 /// Computes volume spikes: ratio of current volume to rolling median:` Volume_Spike_t = Volume_t / median(Volume_{t-window..t-1})`
@@ -505,26 +369,6 @@ fn z_score_price_vs_sma(closes: &[f32], window: usize) -> Vec<f32> {
         let std = var.sqrt().max(EPS);
 
         out[i] = (closes[i] - mean) / std;
-    }
-
-    out
-}
-
-/// Computes normalized position of price inside Bollinger Bands: `BB_Pos_t = (Close_t - SMA_t) / (2 * std_t)`
-///
-/// The first `window` timesteps are set to 0.0.
-fn bollinger_position(closes: &[f32], window: usize) -> Vec<f32> {
-    let n = closes.len();
-    let mut out = vec![0.0; n];
-
-    for i in window..n {
-        let slice = &closes[i - window..i];
-
-        let mean = slice.iter().sum::<f32>() / window as f32;
-        let var = slice.iter().map(|v| (v - mean).powi(2)).sum::<f32>() / window as f32;
-        let std = var.sqrt().max(EPS);
-
-        out[i] = (closes[i] - mean) / (2.0 * std);
     }
 
     out

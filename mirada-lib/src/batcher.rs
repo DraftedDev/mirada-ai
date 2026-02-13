@@ -42,6 +42,6 @@ impl<B: Backend> Batcher<B, DataItem, DataBatch<B>> for StockBatcher {
 
 #[derive(Clone, Debug)]
 pub struct DataBatch<B: Backend> {
-    pub features: Tensor<B, 2>,
+    pub features: Tensor<B, 3>,
     pub targets: Tensor<B, 1, Int>,
 }

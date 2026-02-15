@@ -1,5 +1,5 @@
 {
-  "loss_smoothing": 0.001,
+  "loss_smoothing": 0.2,
   "hidden_size": 64,
   "dropout": 0.35
 }

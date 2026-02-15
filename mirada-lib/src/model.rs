@@ -94,15 +94,15 @@ impl<B: Backend> InferenceStep for Model<B> {
 #[derive(Config, Debug)]
 pub struct ModelConfig {
     /// Loss smoothing factor.
-    #[config(default = 0.05)]
+    #[config(default = 0.001)]
     pub loss_smoothing: f32,
 
     /// Hidden size of layers like Linear and Lstm.
-    #[config(default = 128)]
+    #[config(default = 64)]
     pub hidden_size: usize,
 
     /// Dropout probability.
-    #[config(default = 0.2)]
+    #[config(default = 0.35)]
     pub dropout: f64,
 }
 

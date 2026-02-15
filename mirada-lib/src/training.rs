@@ -83,19 +83,19 @@ impl<B: AutodiffBackend> Model<B> {
 
 #[derive(Config, Debug)]
 pub struct TrainingConfig {
-    #[config(default = 1e-3)]
+    #[config(default = 0.001)]
     pub weight_decay: f32,
-    #[config(default = 100)]
+    #[config(default = 50)]
     pub num_epochs: usize,
-    #[config(default = 32)]
+    #[config(default = 16)]
     pub batch_size: usize,
     #[config(default = 4)]
     pub num_workers: usize,
     #[config(default = 12)]
     pub seed: u64,
-    #[config(default = 1.0e-4)]
+    #[config(default = 0.0001)]
     pub init_learning_rate: f64,
-    #[config(default = 1.0e-5)]
+    #[config(default = 0.00001)]
     pub min_learning_rate: f64,
 }
 

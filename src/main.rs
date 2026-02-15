@@ -10,6 +10,8 @@ pub mod train;
 
 pub mod predict;
 
+pub mod eval;
+
 pub mod dump;
 
 pub mod csv;
@@ -58,6 +60,13 @@ fn main() {
             args.end,
             args.ticker,
             args.others,
+        ),
+        Command::Eval(args) => eval::eval(
+            cli.database,
+            args.dataset,
+            args.model,
+            args.training,
+            args.artifacts,
         ),
         Command::Dump(args) => dump::dump(cli.database, args.kind),
         Command::Csv(args) => match args.command {

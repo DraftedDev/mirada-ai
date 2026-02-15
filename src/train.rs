@@ -66,7 +66,7 @@ pub fn train(
     );
 }
 
-fn build_dataset(mut reader: Reader<File>) -> StockDataset {
+pub fn build_dataset(mut reader: Reader<File>) -> StockDataset {
     let mut dataset = StockDataset::default();
 
     for record in reader.deserialize::<Record>() {

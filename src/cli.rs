@@ -29,6 +29,8 @@ pub enum Command {
     Train(TrainArgs),
     /// Makes a prediction for the given stock data.
     Predict(PredictArgs),
+    /// Evaluates a model on the given dataset.
+    Eval(EvalArgs),
     /// Dumps the given data kind out to the console.
     Dump(DumpArgs),
     /// CSV generation utilities.
@@ -103,6 +105,26 @@ pub struct PredictArgs {
     /// Other tickers to include in the features input.
     #[arg(value_delimiter = ',')]
     pub others: Vec<String>,
+}
+
+/// Arguments for the eval command.
+#[derive(Args)]
+pub struct EvalArgs {
+    /// Path to the model configuration. Will be created if it doesn't exist yet.
+    #[arg(short = 'm', long = "model", default_value = "./config/model.json")]
+    pub model: String,
+    /// Path to the training configuration. Will be created if it doesn't exist yet.
+    #[arg(
+        short = 't',
+        long = "training",
+        default_value = "./config/training.json"
+    )]
+    pub training: String,
+    /// The artifacts directory to use for training.
+    #[arg(short = 'a', long = "artifacts", default_value = "./artifacts")]
+    pub artifacts: String,
+    /// A CSV file containing the dataset to evaluate the model on.
+    pub dataset: String,
 }
 
 /// Arguments for the dump command.

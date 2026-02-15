@@ -3,6 +3,7 @@ pub mod consts;
 pub mod data;
 pub mod database;
 pub mod dataset;
+pub mod eval;
 pub mod inference;
 pub mod math;
 pub mod model;

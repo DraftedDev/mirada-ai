@@ -1,8 +1,8 @@
 | Split | Metric        | Min.     | Epoch    | Max.     | Epoch    |
 |-------|---------------|----------|----------|----------|----------|
-| Train | Accuracy      | 49.847   | 4        | 73.394   | 48       |
+| Train | Accuracy      | 49.077   | 3        | 73.351   | 45       |
 | Train | Learning Rate | 1.081e-5 | 17       | 9.919e-5 | 35       |
-| Train | Loss          | 0.604    | 46       | 0.788    | 1        |
-| Valid | Accuracy      | 49.765   | 44       | 59.155   | 8        |
+| Train | Loss          | 0.574    | 49       | 0.742    | 1        |
+| Valid | Accuracy      | 47.205   | 44       | 62.112   | 4        |
 | Valid | Learning Rate | 0.000e0  | 1        | 0.000e0  | 50       |
-| Valid | Loss          | 0.694    | 11       | 0.722    | 1        |
+| Valid | Loss          | 0.689    | 6        | 0.720    | 50       |

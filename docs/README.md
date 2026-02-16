@@ -6,3 +6,13 @@ and process it using a simple linear regression model.**
 ## Fetching
 
 <!-- TODO -->
+
+## Case Study
+
+When trying to predict the stock NVDA, I used following other stocks:
+
+- AMD
+- INTC
+- TSM
+- AVGO
+- QQQ

@@ -3,12 +3,14 @@ use csv::Trim;
 use mirada_lib::data::{DataKey, StockData};
 use mirada_lib::database::Database;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use yahoo_finance_api::YahooConnector;
 use yahoo_finance_api::time::OffsetDateTime;
 
 pub fn fetch(
     database: String,
     timeout: u64,
+    retry: u8,
     dont_skip: bool,
     start: Option<String>,
     end: Option<String>,
@@ -46,7 +48,7 @@ pub fn fetch(
                 log::warn!("Key {} already exists. Skipping...", key);
                 continue;
             } else {
-                let data = fetch_data(&yahoo, start, end, record.ticker.clone(), true);
+                let data = fetch_data(&yahoo, start, end, record.ticker.clone(), true, retry);
                 database.insert(key, data);
             }
         }
@@ -58,7 +60,7 @@ pub fn fetch(
         let start = parse_date(&start).midnight().assume_utc();
         let end = parse_date(&end).midnight().assume_utc();
 
-        let data = fetch_data(&yahoo, start, end, ticker.clone(), true);
+        let data = fetch_data(&yahoo, start, end, ticker.clone(), true, retry);
         database.insert(DataKey::new(ticker, start, end), data);
     }
 }
@@ -69,15 +71,25 @@ pub fn fetch_data(
     end: OffsetDateTime,
     ticker: String,
     training: bool,
+    mut retry: u8,
 ) -> StockData {
     log::info!(
         "Sending request for '{ticker}' from {} to {}...",
         start.format(DATE_FORMAT).expect("Failed to format start"),
         end.format(DATE_FORMAT).expect("Failed to format end")
     );
-    let response = yahoo
-        .get_quote_history(&ticker, start, end)
-        .expect("Failed to get quote history");
+
+    let mut response = yahoo.get_quote_history(&ticker, start, end);
+
+    while retry > 0 && response.is_err() {
+        log::warn!("Response for {ticker} failed! Retrying ({retry} retries left)...");
+
+        std::thread::sleep(Duration::from_millis(100));
+        retry -= 1;
+        response = yahoo.get_quote_history(&ticker, start, end);
+    }
+
+    let response = response.expect("Failed to fetch data from Yahoo Finance API");
 
     let quotes = response.quotes().expect("Failed to get response result");
 
@@ -98,15 +110,7 @@ pub fn fetch_data(
         lows.push(q.low as f32);
 
         assert!(
-            q.open != 0.0
-                && q.adjclose != 0.0
-                && q.volume != 0
-                && q.high != 0.0
-                && q.low != 0.0
-                && !q.open.is_nan()
-                && !q.adjclose.is_nan()
-                && !q.high.is_nan()
-                && !q.low.is_nan(),
+            !q.open.is_nan() && !q.adjclose.is_nan() && !q.high.is_nan() && !q.low.is_nan(),
             "Got invalid response for '{ticker}'"
         );
     }

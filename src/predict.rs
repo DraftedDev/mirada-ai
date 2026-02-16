@@ -32,11 +32,11 @@ pub fn predict(
     let model = Model::<Backend>::load(model_cfg, model_path, &device);
 
     let data = {
-        let data = fetch_data(&yahoo, start, end, ticker.clone(), false);
+        let data = fetch_data(&yahoo, start, end, ticker.clone(), false, 0);
 
         let others = others
             .into_iter()
-            .map(|other| fetch_data(&yahoo, start, end, other, false))
+            .map(|other| fetch_data(&yahoo, start, end, other, false, 0))
             .collect::<Vec<_>>();
 
         data.merge::<Backend>(others, &device)

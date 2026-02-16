@@ -40,6 +40,9 @@ pub enum Command {
 /// Arguments for the fetch command.
 #[derive(Args)]
 pub struct FetchArgs {
+    /// How many times to retry failed requests. Set to 0 to disable.
+    #[arg(short = 'r', long = "retry", default_value_t = 5)]
+    pub retry: u8,
     /// Don't skip existent keys.
     #[arg(short = 's', long = "dont-skip-existent", default_value_t = false)]
     pub dont_skip_existent: bool,

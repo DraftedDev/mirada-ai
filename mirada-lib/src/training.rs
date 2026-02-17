@@ -8,8 +8,13 @@ use burn::lr_scheduler::cosine::CosineAnnealingLrSchedulerConfig;
 use burn::module::Module;
 use burn::optim::AdamWConfig;
 use burn::tensor::backend::AutodiffBackend;
-use burn::train::metric::{AccuracyMetric, LearningRateMetric, LossMetric};
-use burn::train::{Learner, SupervisedTraining, TrainingStrategy};
+use burn::train::metric::store::{Aggregate, Direction, Split};
+use burn::train::metric::{
+    AccuracyMetric, ClassReduction, LearningRateMetric, LossMetric, PrecisionMetric,
+};
+use burn::train::{
+    Learner, MetricEarlyStoppingStrategy, StoppingCondition, SupervisedTraining, TrainingStrategy,
+};
 use std::path::Path;
 
 impl<B: AutodiffBackend> Model<B> {
@@ -50,7 +55,7 @@ impl<B: AutodiffBackend> Model<B> {
             .init();
 
         let lr_scheduler =
-            CosineAnnealingLrSchedulerConfig::new(config.init_learning_rate, config.num_epochs)
+            CosineAnnealingLrSchedulerConfig::new(config.init_learning_rate, config.epochs)
                 .with_min_lr(config.min_learning_rate)
                 .init()
                 .expect("Failed to init learning rate scheduler");
@@ -60,16 +65,36 @@ impl<B: AutodiffBackend> Model<B> {
         log::info!("Initializing training...");
         let learner = Learner::new(self.clone(), optimizer, lr_scheduler);
 
+        let valid_loss = LossMetric::new();
+
+        let early_stopping = MetricEarlyStoppingStrategy::new(
+            &valid_loss,
+            Aggregate::Mean,
+            Direction::Lowest,
+            Split::Valid,
+            StoppingCondition::NoImprovementSince {
+                n_epochs: config.early_stopping_patience,
+            },
+        );
+
         let training = SupervisedTraining::new(artifacts, train_dataloader, valid_dataloader)
-            .metric_train_numeric(AccuracyMetric::new())
-            .metric_valid_numeric(AccuracyMetric::new())
-            .metric_train_numeric(LossMetric::new())
-            .metric_valid_numeric(LossMetric::new())
-            .metric_train_numeric(LearningRateMetric::new())
-            .metric_valid_numeric(LearningRateMetric::new())
             .with_file_checkpointer(recorder.clone())
             .with_training_strategy(TrainingStrategy::SingleDevice(device))
-            .num_epochs(config.num_epochs)
+            .num_epochs(config.epochs)
+            .early_stopping(early_stopping)
+            // Precision
+            .metric_train_numeric(PrecisionMetric::multiclass(1, ClassReduction::Macro))
+            .metric_valid_numeric(PrecisionMetric::multiclass(1, ClassReduction::Macro))
+            // Accuracy
+            .metric_train_numeric(AccuracyMetric::new())
+            .metric_valid_numeric(AccuracyMetric::new())
+            // Loss
+            .metric_train_numeric(LossMetric::new())
+            .metric_valid_numeric(valid_loss)
+            // Learning Rate
+            .metric_train_numeric(LearningRateMetric::new())
+            .metric_valid_numeric(LearningRateMetric::new())
+            // Sum up results
             .summary();
 
         let result = training.launch(learner);
@@ -86,7 +111,9 @@ pub struct TrainingConfig {
     #[config(default = 0.001)]
     pub weight_decay: f32,
     #[config(default = 50)]
-    pub num_epochs: usize,
+    pub epochs: usize,
+    #[config(default = 10)]
+    pub early_stopping_patience: usize,
     #[config(default = 16)]
     pub batch_size: usize,
     #[config(default = 4)]

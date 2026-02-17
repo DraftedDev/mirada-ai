@@ -1,6 +1,7 @@
 {
   "weight_decay": 0.001,
-  "num_epochs": 50,
+  "epochs": 50,
+  "early_stopping_patience": 10,
   "batch_size": 16,
   "num_workers": 4,
   "seed": 12,

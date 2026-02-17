@@ -97,7 +97,7 @@ impl<B: AutodiffBackend> Model<B> {
             // Sum up results
             .summary();
 
-        log::info!("Launch training...");
+        log::info!("Launching training...");
 
         let result = training.launch(learner);
 

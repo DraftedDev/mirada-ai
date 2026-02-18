@@ -1,0 +1,10 @@
+| Split | Metric                      | Min.     | Epoch    | Max.     | Epoch    |
+|-------|-----------------------------|----------|----------|----------|----------|
+| Train | Accuracy                    | 50.971   | 1        | 99.394   | 99       |
+| Train | Loss                        | 0.028    | 99       | 0.718    | 1        |
+| Train | Precision @ TopK(1) [Macro] | 51.239   | 1        | 99.398   | 99       |
+| Train | Sharpe Ratio                | -3.319e-2| 1        | 1.012    | 97       |
+| Valid | Accuracy                    | 52.256   | 1        | 75.463   | 96       |
+| Valid | Loss                        | 0.689    | 7        | 1.711    | 100      |
+| Valid | Precision @ TopK(1) [Macro] | 51.816   | 1        | 75.460   | 93       |
+| Valid | Sharpe Ratio                | 0.024    | 1        | 0.480    | 99       |

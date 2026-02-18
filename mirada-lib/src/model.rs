@@ -75,7 +75,7 @@ impl<B: AutodiffBackend> TrainStep for Model<B> {
     type Input = DataBatch<B>;
     type Output = ClassificationOutput<B>;
 
-    fn step(&self, batch: DataBatch<B>) -> TrainOutput<ClassificationOutput<B>> {
+    fn step(&self, batch: Self::Input) -> TrainOutput<Self::Output> {
         let item = self.forward_classification(batch.features, batch.targets);
 
         TrainOutput::new(self, item.loss.backward(), item)
@@ -86,7 +86,7 @@ impl<B: Backend> InferenceStep for Model<B> {
     type Input = DataBatch<B>;
     type Output = ClassificationOutput<B>;
 
-    fn step(&self, batch: DataBatch<B>) -> ClassificationOutput<B> {
+    fn step(&self, batch: Self::Input) -> Self::Output {
         self.forward_classification(batch.features, batch.targets)
     }
 }

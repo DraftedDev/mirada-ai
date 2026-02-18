@@ -1,5 +1,6 @@
 use crate::batcher::DataBatch;
 use crate::consts::TOTAL_FEATURE_SIZE;
+use crate::output::ModelOutput;
 use burn::Tensor;
 use burn::config::Config;
 use burn::module::Module;
@@ -12,7 +13,7 @@ use burn::prelude::Backend;
 use burn::record::CompactRecorder;
 use burn::tensor::Int;
 use burn::tensor::backend::AutodiffBackend;
-use burn::train::{ClassificationOutput, InferenceStep, TrainOutput, TrainStep};
+use burn::train::{InferenceStep, TrainOutput, TrainStep};
 use std::path::Path;
 
 /// The core machine learning model for Mirada AI.
@@ -50,11 +51,18 @@ impl<B: Backend> Model<B> {
     pub fn forward_classification(
         &self,
         input: Tensor<B, 3>,
-        target: Tensor<B, 1, Int>,
-    ) -> ClassificationOutput<B> {
-        let out = self.forward(input);
-        let loss = self.loss.forward(out.clone(), target.clone());
-        ClassificationOutput::new(loss, out, target)
+        targets: Tensor<B, 1, Int>,
+        returns: Tensor<B, 1>,
+    ) -> ModelOutput<B> {
+        let output = self.forward(input);
+        let loss = self.loss.forward(output.clone(), targets.clone());
+
+        ModelOutput {
+            loss,
+            output,
+            targets,
+            returns,
+        }
     }
 
     pub fn load(config: ModelConfig, path: impl AsRef<Path>, device: &B::Device) -> Self {
@@ -73,10 +81,10 @@ impl<B: Backend> Model<B> {
 
 impl<B: AutodiffBackend> TrainStep for Model<B> {
     type Input = DataBatch<B>;
-    type Output = ClassificationOutput<B>;
+    type Output = ModelOutput<B>;
 
     fn step(&self, batch: Self::Input) -> TrainOutput<Self::Output> {
-        let item = self.forward_classification(batch.features, batch.targets);
+        let item = self.forward_classification(batch.features, batch.targets, batch.returns);
 
         TrainOutput::new(self, item.loss.backward(), item)
     }
@@ -84,10 +92,10 @@ impl<B: AutodiffBackend> TrainStep for Model<B> {
 
 impl<B: Backend> InferenceStep for Model<B> {
     type Input = DataBatch<B>;
-    type Output = ClassificationOutput<B>;
+    type Output = ModelOutput<B>;
 
     fn step(&self, batch: Self::Input) -> Self::Output {
-        self.forward_classification(batch.features, batch.targets)
+        self.forward_classification(batch.features, batch.targets, batch.returns)
     }
 }
 

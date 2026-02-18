@@ -22,20 +22,23 @@ impl<B: Backend> Batcher<B, DataItem, DataBatch<B>> for StockBatcher {
 
         let mut features = Vec::with_capacity(items.len());
         let mut targets = Vec::with_capacity(items.len());
+        let mut returns = Vec::with_capacity(items.len());
 
         for item in items {
             let item = item
                 .to_stock_data::<B>(&self.database, device)
                 .expect("Failed to get stock data");
 
-            let (feature, target) = item.into_tensors(device);
+            let (feature, target, ret) = item.into_tensors(device);
             features.push(feature);
             targets.push(target);
+            returns.push(ret);
         }
 
         DataBatch {
             features: Tensor::cat(features, 0),
             targets: Tensor::cat(targets, 0),
+            returns: Tensor::cat(returns, 0),
         }
     }
 }
@@ -44,4 +47,5 @@ impl<B: Backend> Batcher<B, DataItem, DataBatch<B>> for StockBatcher {
 pub struct DataBatch<B: Backend> {
     pub features: Tensor<B, 3>,
     pub targets: Tensor<B, 1, Int>,
+    pub returns: Tensor<B, 1>,
 }

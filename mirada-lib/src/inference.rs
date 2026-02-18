@@ -8,7 +8,7 @@ impl<B: Backend> Model<B> {
     ///
     /// See [crate::math::generate_targets] for info about classes.
     pub fn infer(&self, input: StockData, device: &B::Device) -> i32 {
-        let (features, _) = input.into_tensors(device);
+        let (features, _, _) = input.into_tensors(device);
         let shape = features.shape();
 
         let t = shape.dims[0];

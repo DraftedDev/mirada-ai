@@ -1,6 +1,7 @@
 use crate::batcher::StockBatcher;
 use crate::database::Database;
 use crate::dataset::StockDataset;
+use crate::metrics::SharpeRatioMetrics;
 use crate::model::Model;
 use burn::config::Config;
 use burn::data::dataloader::{DataLoaderBuilder, Dataset};
@@ -9,9 +10,7 @@ use burn::module::Module;
 use burn::optim::AdamWConfig;
 use burn::tensor::backend::AutodiffBackend;
 use burn::train::metric::store::{Aggregate, Direction, Split};
-use burn::train::metric::{
-    AccuracyMetric, ClassReduction, LearningRateMetric, LossMetric, PrecisionMetric,
-};
+use burn::train::metric::{AccuracyMetric, ClassReduction, LossMetric, PrecisionMetric};
 use burn::train::{
     Learner, MetricEarlyStoppingStrategy, StoppingCondition, SupervisedTraining, TrainingStrategy,
 };
@@ -65,12 +64,12 @@ impl<B: AutodiffBackend> Model<B> {
         log::info!("Initializing training...");
         let learner = Learner::new(self.clone(), optimizer, lr_scheduler);
 
-        let valid_loss = LossMetric::new();
+        let valid_sharpe = SharpeRatioMetrics::default();
 
         let early_stopping = MetricEarlyStoppingStrategy::new(
-            &valid_loss,
+            &valid_sharpe,
             Aggregate::Mean,
-            Direction::Lowest,
+            Direction::Highest,
             Split::Valid,
             StoppingCondition::NoImprovementSince {
                 n_epochs: config.early_stopping_patience,
@@ -82,6 +81,9 @@ impl<B: AutodiffBackend> Model<B> {
             .with_training_strategy(TrainingStrategy::SingleDevice(device))
             .num_epochs(config.epochs)
             .early_stopping(early_stopping)
+            // Sharpe Ratio
+            .metric_train_numeric(SharpeRatioMetrics::default())
+            .metric_valid_numeric(valid_sharpe)
             // Precision
             .metric_train_numeric(PrecisionMetric::multiclass(1, ClassReduction::Macro))
             .metric_valid_numeric(PrecisionMetric::multiclass(1, ClassReduction::Macro))
@@ -90,10 +92,7 @@ impl<B: AutodiffBackend> Model<B> {
             .metric_valid_numeric(AccuracyMetric::new())
             // Loss
             .metric_train_numeric(LossMetric::new())
-            .metric_valid_numeric(valid_loss)
-            // Learning Rate
-            .metric_train_numeric(LearningRateMetric::new())
-            .metric_valid_numeric(LearningRateMetric::new())
+            .metric_valid_numeric(LossMetric::new())
             // Sum up results
             .summary();
 

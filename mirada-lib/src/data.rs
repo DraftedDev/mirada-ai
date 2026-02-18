@@ -38,6 +38,7 @@ impl Display for DataKey {
 pub struct StockData {
     features: FloatSerdeTensor<3>,
     targets: IntSerdeTensor<1>,
+    returns: FloatSerdeTensor<1>,
     time: (OffsetDateTime, OffsetDateTime),
 }
 
@@ -142,6 +143,28 @@ impl StockData {
             train
         );
 
+        let returns = if train {
+            let mut ret = Vec::with_capacity(n_samples);
+
+            let first_feature_idx = skip;
+
+            for i in 0..n_samples {
+                let t = first_feature_idx + i + TEMP_WINDOWS - 1;
+
+                let c0 = closes[t];
+                let c1 = closes[t + HORIZON];
+
+                // Use log return (more stable)
+                let r = (c1 / c0).ln();
+
+                ret.push(r);
+            }
+
+            FloatSerdeTensor::new([n_samples], ret)
+        } else {
+            FloatSerdeTensor::none()
+        };
+
         let feature_width = features[0].len();
         let expected_len = n_samples * TEMP_WINDOWS * feature_width;
         assert_eq!(
@@ -155,13 +178,14 @@ impl StockData {
         Self {
             features: FloatSerdeTensor::new([n_samples, TEMP_WINDOWS, feature_width], windows),
             targets,
+            returns,
             time,
         }
     }
 
     /// Merges the **features** from `other` into this [StockData].
     ///
-    /// Does not merge targets and time since it wouldn't make sense to do so.
+    /// Does not merge targets, returns and time since it wouldn't make sense to do so.
     pub fn merge<B: Backend>(self, others: Vec<StockData>, device: &B::Device) -> Self {
         for other in &others {
             assert_eq!(
@@ -208,14 +232,19 @@ impl StockData {
         Self {
             features: FloatSerdeTensor::from_tensor(cat_features),
             targets: self.targets,
+            returns: self.returns,
             time: self.time,
         }
     }
 
-    pub fn into_tensors<B: Backend>(self, device: &B::Device) -> (Tensor<B, 3>, Tensor<B, 1, Int>) {
+    pub fn into_tensors<B: Backend>(
+        self,
+        device: &B::Device,
+    ) -> (Tensor<B, 3>, Tensor<B, 1, Int>, Tensor<B, 1>) {
         (
             self.features.to_tensor(device),
             self.targets.to_tensor(device),
+            self.returns.to_tensor(device),
         )
     }
 

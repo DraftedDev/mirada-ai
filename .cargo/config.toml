@@ -4,11 +4,12 @@ opt-level = "z"
 rustflags = ["-Zthreads=0", "-Znext-solver"]
 
 [profile.release]
-lto = "thin"
-opt-level = 1
+lto = true
+opt-level = 3
 strip = true
 panic = "abort"
-rustflags = ["-Ctarget-cpu=native", "-Zthreads=0"]
+codegen-units = 1
+rustflags = ["-Ctarget-cpu=native"]
 
 [profile.release.package."*"]
 opt-level = 3

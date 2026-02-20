@@ -1,9 +1,10 @@
-use crate::utils::{DATE_FORMAT, parse_date, round_to, yahoo};
+use crate::utils::{DATE_FORMAT, parse_date, yahoo};
 use csv::Trim;
 use mirada_lib::data::{DataKey, StockData};
 use mirada_lib::database::Database;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::AtomicU64;
 use std::time::Duration;
 use yahoo_finance_api::YahooConnector;
 use yahoo_finance_api::time::OffsetDateTime;
@@ -33,19 +34,24 @@ pub fn fetch(
             .expect("Failed to read CSV file")
             .deserialize()
             .map(|rec| rec.expect("Failed to deserialize record"))
-            .enumerate()
-            .collect::<Vec<(usize, Record)>>();
+            .collect::<Vec<Record>>();
 
-        let length = records.len() as f32;
+        // Multiply by 1_000_000 to effectively create an atomic float
+        let progress_per_item = (100.0 / records.len() as f32 * 1_000_000.0) as u64;
+        let progress = AtomicU64::new(0);
 
-        let process = |(idx, record): (usize, Record)| {
+        let process = |record: Record| {
             let start = parse_date(&record.start).midnight().assume_utc();
             let end = parse_date(&record.end).midnight().assume_utc();
 
             let key = DataKey::new(record.ticker.clone(), start, end);
 
-            let progress = round_to((idx as f32 / length) * 100.0, 2);
-            log::info!("Progress: {progress}%");
+            let progress = (progress
+                .fetch_add(progress_per_item, std::sync::atomic::Ordering::SeqCst)
+                + progress_per_item) as f32;
+            let percentage = (progress / 10_000.0).round() / 100.0;
+
+            log::info!("Progress: {}%", percentage);
 
             if !_override && database.get(key.clone()).is_some() {
                 log::warn!("Key {} already exists. Skipping...", key);

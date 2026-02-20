@@ -65,9 +65,3 @@ where
         .map(|s| T::from_str(&s).unwrap_or_else(|_| panic!("Failed to parse env var {var}")))
         .unwrap_or(default)
 }
-
-pub fn round_to(value: f32, precision: i32) -> f32 {
-    let factor = 10.0_f32.powi(precision);
-
-    (value * factor).round() / factor
-}

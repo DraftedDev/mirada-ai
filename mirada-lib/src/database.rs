@@ -55,7 +55,6 @@ impl Database {
     }
 
     pub fn insert(&self, key: DataKey, data: StockData) {
-        log::info!("Inserting data with {key}");
         let mut txn = self
             .env
             .write_txn()

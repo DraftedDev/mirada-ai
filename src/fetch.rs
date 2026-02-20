@@ -2,6 +2,7 @@ use crate::utils::{DATE_FORMAT, parse_date, round_to, yahoo};
 use csv::Trim;
 use mirada_lib::data::{DataKey, StockData};
 use mirada_lib::database::Database;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use yahoo_finance_api::YahooConnector;
@@ -10,8 +11,9 @@ use yahoo_finance_api::time::OffsetDateTime;
 pub fn fetch(
     database: String,
     timeout: u64,
+    serial: bool,
     retry: u8,
-    dont_skip: bool,
+    _override: bool,
     start: Option<String>,
     end: Option<String>,
     ticker: Option<String>,
@@ -31,11 +33,12 @@ pub fn fetch(
             .expect("Failed to read CSV file")
             .deserialize()
             .map(|rec| rec.expect("Failed to deserialize record"))
-            .collect::<Vec<Record>>();
+            .enumerate()
+            .collect::<Vec<(usize, Record)>>();
 
         let length = records.len() as f32;
 
-        for (idx, record) in records.into_iter().enumerate() {
+        let process = |(idx, record): (usize, Record)| {
             let start = parse_date(&record.start).midnight().assume_utc();
             let end = parse_date(&record.end).midnight().assume_utc();
 
@@ -44,13 +47,28 @@ pub fn fetch(
             let progress = round_to((idx as f32 / length) * 100.0, 2);
             log::info!("Progress: {progress}%");
 
-            if !dont_skip && database.get(key.clone()).is_some() {
+            if !_override && database.get(key.clone()).is_some() {
                 log::warn!("Key {} already exists. Skipping...", key);
-                continue;
+                None
             } else {
-                let data = fetch_data(&yahoo, start, end, record.ticker.clone(), true, retry);
-                database.insert(key, data);
+                Some((
+                    key,
+                    fetch_data(&yahoo, start, end, record.ticker.clone(), true, retry),
+                ))
             }
+        };
+
+        let items = if serial {
+            records.into_iter().filter_map(process).collect::<Vec<_>>()
+        } else {
+            records
+                .into_par_iter()
+                .filter_map(process)
+                .collect::<Vec<_>>()
+        };
+
+        for (key, data) in items {
+            database.insert(key, data);
         }
     } else {
         let start = start.expect("'start' argument must be provided");

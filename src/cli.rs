@@ -40,12 +40,15 @@ pub enum Command {
 /// Arguments for the fetch command.
 #[derive(Args)]
 pub struct FetchArgs {
+    /// Whether to fetch data one by one instead of parallel using multiple threads.
+    #[arg(short = 's', long = "serial", default_value_t = false)]
+    pub serial: bool,
     /// How many times to retry failed requests. Set to 0 to disable.
     #[arg(short = 'r', long = "retry", default_value_t = 5)]
     pub retry: u8,
-    /// Don't skip existent keys.
-    #[arg(short = 's', long = "dont-skip-existent", default_value_t = false)]
-    pub dont_skip_existent: bool,
+    /// Override and don't skip existing data.
+    #[arg(short = 'o', long = "override", default_value_t = false)]
+    pub _override: bool,
     /// Whether to fetch multiple quotes using the given CSV file content as input args.
     #[arg(
         short = 'f',

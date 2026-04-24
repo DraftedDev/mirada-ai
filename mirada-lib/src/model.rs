@@ -125,7 +125,7 @@ impl ModelConfig {
             lstm2: LstmConfig::new(self.hidden_size, self.hidden_size, true).init(device),
             dropout: DropoutConfig::new(self.dropout).init(),
             norm: LayerNormConfig::new(self.hidden_size * 2).init(device),
-            act: Gelu,
+            act: Gelu::new(),
             lin: LinearConfig::new(self.hidden_size * 2, 2).init(device),
         }
     }

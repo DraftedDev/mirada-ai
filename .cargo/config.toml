@@ -1,7 +1,10 @@
+[build]
+jobs = 1
+
 [profile.dev]
-incremental = true
+debug = 1
+codegen-units = 16
 opt-level = "z"
-rustflags = ["-Zthreads=0", "-Znext-solver"]
 
 [profile.release]
 lto = true

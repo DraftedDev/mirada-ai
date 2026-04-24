@@ -10,7 +10,7 @@ log = { workspace = true }
 serde = { workspace = true }
 
 [dependencies.burn]
-version = "0.20.1"
+version = "0.21.0-pre.2"
 default-features = false
 features = ["std", "autodiff", "train", "tui", "fusion"]
 

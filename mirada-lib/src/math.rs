@@ -50,44 +50,58 @@ pub fn process(
     );
 
     let lr1 = log_return(closes, 1);
-    let lr2 = log_return(closes, 2);
     let lr3 = log_return(closes, 3);
+    let lr5 = log_return(closes, 5);
+    let lr10 = log_return(closes, 10);
 
-    let vol1 = rolling_std(&lr1, 1);
-    let vol2 = rolling_std(&lr1, 2);
+    let vol5 = rolling_std(&lr1, 5);
+    let vol10 = rolling_std(&lr1, 10);
+    let vol20 = rolling_std(&lr1, 20);
 
-    let ema3 = ema_ratio(closes, 3);
-    let ema5 = ema_ratio(closes, 5);
-    let ema_diff = ema5
+    let ema10 = ema_ratio(closes, 10);
+    let ema20 = ema_ratio(closes, 20);
+
+    let ema_diff = ema10
         .iter()
-        .zip(&ema3)
-        .map(|(e5, e3)| *e5 - *e3)
+        .zip(&ema20)
+        .map(|(e10, e20)| *e10 - *e20)
+        .collect::<Vec<_>>();
+
+    let momentum5 = closes
+        .iter()
+        .zip(closes.iter().skip(5))
+        .map(|(c0, c5)| (c5 / c0) - 1.0)
         .collect::<Vec<_>>();
 
     let (body, upper, lower, range) = candle_features(opens, closes, highs, lows);
 
-    let vol_ratio = volume_ratio(volumes, 7);
+    let vol_ratio = volume_ratio(volumes, 10);
     let vol_spike = volume_spike(volumes, 5);
-
     let obv = obv(closes, volumes);
-    let z_score_price_vs_sma = z_score_price_vs_sma(closes, 5);
-    let volat_regime = volatility_regime(&lr1, 5, 10);
-    let trend_strength_vs_noise = trend_strength_vs_noise(closes, highs, lows, 3, 5, 4);
-    let rsi = rsi(closes, 3);
-    let macd_hist = macd_histogram(closes, 3, 6, 2);
+
+    let z_score_price_vs_sma = z_score_price_vs_sma(closes, 20);
+    let volat_regime = volatility_regime(&lr1, 10, 20);
+    let trend_strength_vs_noise = trend_strength_vs_noise(closes, highs, lows, 5, 10, 10);
+
+    let rsi = rsi(closes, 7);
+    let macd = macd_histogram(closes, 8, 17, 5);
+    let atr14 = atr(highs, lows, closes, 14);
 
     let mut out = vec![[0.0; FEATURE_SIZE]; n];
 
     for i in 0..n {
         out[i] = [
             lr1[i],
-            lr2[i],
             lr3[i],
-            vol1[i],
-            vol2[i],
-            ema3[i],
-            ema5[i],
+            lr5[i],
+            lr10[i],
+            vol5[i],
+            vol10[i],
+            vol20[i],
+            ema10[i],
+            ema20[i],
             ema_diff[i],
+            momentum5[i],
             body[i],
             upper[i],
             lower[i],
@@ -99,7 +113,8 @@ pub fn process(
             volat_regime[i],
             trend_strength_vs_noise[i],
             rsi[i],
-            macd_hist[i],
+            macd[i],
+            atr14[i],
         ];
     }
 
@@ -107,7 +122,6 @@ pub fn process(
 }
 
 /// Normalize the output from [process] into rolling mean/std and clipped data.
-// TODO: make this configurable via constants or whatever
 pub fn normalize(features: &[[f32; FEATURE_SIZE]]) -> Vec<[f32; FEATURE_SIZE]> {
     let n = features.len();
     let mut out = vec![[0.0; FEATURE_SIZE]; n];

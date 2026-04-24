@@ -9,13 +9,13 @@ impl<B: Backend> Model<B> {
     /// See [crate::math::generate_targets] for info about classes.
     pub fn infer(&self, input: StockData, device: &B::Device) -> i32 {
         let (features, _, _) = input.into_tensors(device);
-        let shape = features.shape();
 
-        let t = shape.dims[0];
+        let t = features.dims()[0];
 
         assert!(t > 0, "No timesteps available");
         assert_eq!(
-            shape.dims[1], TOTAL_FEATURE_SIZE,
+            features.dims()[1],
+            TOTAL_FEATURE_SIZE,
             "Expected TOTAL_FEATURE_SIZE = {TOTAL_FEATURE_SIZE}"
         );
 

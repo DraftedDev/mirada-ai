@@ -26,7 +26,7 @@ impl<B: AutodiffBackend> Model<B> {
         assert!(!dataset.is_empty(), "Datasets must not be empty");
 
         let dataloader = DataLoaderBuilder::new(batcher.clone())
-            .batch_size(1)
+            .batch_size(config.batch_size)
             .num_workers(config.num_workers)
             .set_device(device)
             .build(dataset);
@@ -40,7 +40,5 @@ impl<B: AutodiffBackend> Model<B> {
             .build(self.clone());
 
         eval.eval("Evaluation", dataloader);
-
-        // TODO: this doesn't give a summary?
     }
 }

@@ -8,4 +8,4 @@ pub const TOTAL_FEATURE_SIZE: usize = FEATURE_SIZE * (OTHER_STOCKS + 1);
 pub const SKIPPED_TIMESTEPS: usize = 30;
 pub const EPS: f32 = 1e-8;
 pub const CLASSES: usize = 2;
-pub const THRESHOLD: f32 = 0.001;
+pub const THRESHOLD: f32 = 0.01;

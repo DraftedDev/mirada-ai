@@ -67,12 +67,6 @@ pub fn process(
         .map(|(e10, e20)| *e10 - *e20)
         .collect::<Vec<_>>();
 
-    let momentum5 = closes
-        .iter()
-        .zip(closes.iter().skip(5))
-        .map(|(c0, c5)| (c5 / c0) - 1.0)
-        .collect::<Vec<_>>();
-
     let (body, upper, lower, range) = candle_features(opens, closes, highs, lows);
 
     let vol_ratio = volume_ratio(volumes, 10);
@@ -101,7 +95,6 @@ pub fn process(
             ema10[i],
             ema20[i],
             ema_diff[i],
-            momentum5[i],
             body[i],
             upper[i],
             lower[i],

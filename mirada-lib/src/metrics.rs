@@ -31,25 +31,39 @@ impl<B: Backend> Metric for SharpeRatioMetrics<B> {
         let preds: Vec<i32> = preds.into_data().to_vec::<i32>().unwrap();
         let rets: Vec<f32> = item.returns.clone().into_data().to_vec::<f32>().unwrap();
 
-        // Convert per-trade to signed returns based on prediction
         let batch_returns: Vec<f64> = preds
             .iter()
             .zip(rets.iter())
-            .map(|(p, r)| if *p == 1 { *r as f64 } else { -*r as f64 })
+            .filter_map(|(p, r)| match p {
+                2 => Some(*r as f64),
+                0 => Some(-*r as f64),
+                _ => None, // ignore neutral completely
+            })
             .collect();
 
         self.returns.extend(batch_returns);
 
-        // Compute running Sharpe: mean / std-dev
         let n = self.returns.len();
+
+        if n == 0 {
+            return self.state.update(
+                0.0,
+                item.returns.dims()[0],
+                FormatOptions::new(MetricName::new("sharpe ratio".to_string())).precision(2),
+            );
+        }
+
         let mean = self.returns.iter().sum::<f64>() / n as f64;
+
         let variance = self
             .returns
             .iter()
             .map(|x| (*x - mean).powi(2))
             .sum::<f64>()
             / n as f64;
-        let std_dev = variance.sqrt().max(1e-8); // avoid div0
+
+        let std_dev = variance.sqrt().max(1e-8);
+
         let sharpe = mean / std_dev;
 
         let [batch_size] = item.returns.dims();

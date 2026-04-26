@@ -1,5 +1,6 @@
 use crate::utils::{DATE_FORMAT, parse_date, yahoo};
 use csv::Trim;
+use mirada_lib::consts::OTHER_STOCKS;
 use mirada_lib::data::{DataKey, StockData};
 use mirada_lib::database::Database;
 use rayon::prelude::*;
@@ -15,88 +16,101 @@ pub fn fetch(
     serial: bool,
     retry: u8,
     _override: bool,
-    start: Option<String>,
-    end: Option<String>,
-    ticker: Option<String>,
-    file: Option<String>,
+    file: String,
 ) {
     let yahoo = yahoo(timeout);
 
     let database = Database::new(database);
 
-    if let Some(file) = file {
-        log::info!("Reading input arguments from '{file}'...");
+    log::info!("Reading input arguments from '{file}'...");
 
-        let records = csv::ReaderBuilder::new()
-            .trim(Trim::All)
-            .buffer_capacity(1024)
-            .from_path(file)
-            .expect("Failed to read CSV file")
-            .deserialize()
-            .map(|rec| rec.expect("Failed to deserialize record"))
-            .collect::<Vec<Record>>();
+    let records = csv::ReaderBuilder::new()
+        .trim(Trim::All)
+        .buffer_capacity(1024)
+        .from_path(file)
+        .expect("Failed to read CSV file")
+        .deserialize()
+        .map(|rec| rec.expect("Failed to deserialize record"))
+        .collect::<Vec<Record>>();
 
-        // Multiply by 1_000_000 to effectively create an atomic float
-        let progress_per_item = (100.0 / records.len() as f32 * 1_000_000.0) as u64;
-        let progress = AtomicU64::new(0);
+    // Multiply by 1_000_000 to effectively create an atomic float
+    let progress_per_item = (100.0 / records.len() as f32 * 1_000_000.0) as u64;
+    let progress = AtomicU64::new(0);
 
-        let process = |record: Record| {
-            let start = parse_date(&record.start).midnight().assume_utc();
-            let end = parse_date(&record.end).midnight().assume_utc();
+    let process = |record: Record| {
+        let start = parse_date(&record.start).midnight().assume_utc();
+        let end = parse_date(&record.end).midnight().assume_utc();
 
-            let key = DataKey::new(record.ticker.clone(), start, end);
+        let key = DataKey::new(record.ticker.clone(), start, end);
 
-            let progress = (progress
-                .fetch_add(progress_per_item, std::sync::atomic::Ordering::SeqCst)
-                + progress_per_item) as f32;
-            let percentage = (progress / 10_000.0).round() / 100.0;
+        let progress = (progress.fetch_add(progress_per_item, std::sync::atomic::Ordering::SeqCst)
+            + progress_per_item) as f32;
+        let percentage = (progress / 10_000.0).round() / 100.0;
 
-            log::info!("Progress: {}%", percentage);
+        log::info!("Progress: {}%", percentage);
 
-            if !_override && database.get(key.clone()).is_some() {
-                log::warn!("Key {} already exists. Skipping...", key);
-                None
-            } else {
-                Some((
-                    key,
-                    fetch_data(&yahoo, start, end, record.ticker.clone(), true, retry),
-                ))
-            }
-        };
-
-        let items = if serial {
-            records.into_iter().filter_map(process).collect::<Vec<_>>()
+        if !_override && database.get(key.clone()).is_some() {
+            log::warn!("Key {} already exists. Skipping...", key);
+            None
         } else {
-            records
-                .into_par_iter()
-                .filter_map(process)
-                .collect::<Vec<_>>()
-        };
-
-        for (key, data) in items {
-            database.insert(key, data);
+            Some((
+                key,
+                fetch_stock(&yahoo, start, end, record.ticker.clone(), true, retry),
+            ))
         }
+    };
+
+    let items = if serial {
+        records.into_iter().filter_map(process).collect::<Vec<_>>()
     } else {
-        let start = start.expect("'start' argument must be provided");
-        let end = end.expect("'end' argument must be provided");
-        let ticker = ticker.expect("'ticker' argument must be provided");
+        records
+            .into_par_iter()
+            .filter_map(process)
+            .collect::<Vec<_>>()
+    };
 
-        let start = parse_date(&start).midnight().assume_utc();
-        let end = parse_date(&end).midnight().assume_utc();
+    let items = items.chunks_exact(OTHER_STOCKS + 1).map(|stocks| {
+        let (key, target) = stocks[0].clone();
+        let others: [Vec<f32>; OTHER_STOCKS] = stocks[1..=OTHER_STOCKS]
+            .into_iter()
+            .map(|(_, data)| data.closes.clone())
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap_or_else(|_| {
+                panic!(
+                    "Expected {OTHER_STOCKS} other stocks, but got {}",
+                    stocks.len() - 1
+                )
+            });
 
-        let data = fetch_data(&yahoo, start, end, ticker.clone(), true, retry);
-        database.insert(DataKey::new(ticker, start, end), data);
+        (
+            key,
+            StockData::new(
+                target.opens,
+                target.closes,
+                others,
+                target.volumes,
+                target.highs,
+                target.lows,
+                target.date_range,
+                target.training,
+            ),
+        )
+    });
+
+    for (key, data) in items {
+        database.insert(key, data);
     }
 }
 
-pub fn fetch_data(
+pub fn fetch_stock(
     yahoo: &YahooConnector,
     start: OffsetDateTime,
     end: OffsetDateTime,
     ticker: String,
     training: bool,
     mut retry: u8,
-) -> StockData {
+) -> FetchResult {
     log::info!(
         "Sending request for '{ticker}' from {} to {}...",
         start.format(DATE_FORMAT).expect("Failed to format start"),
@@ -139,7 +153,26 @@ pub fn fetch_data(
         );
     }
 
-    StockData::new(opens, closes, volumes, highs, lows, (start, end), training)
+    FetchResult {
+        opens,
+        closes,
+        volumes,
+        highs,
+        lows,
+        date_range: (start, end),
+        training,
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct FetchResult {
+    pub opens: Vec<f32>,
+    pub closes: Vec<f32>,
+    pub volumes: Vec<f32>,
+    pub highs: Vec<f32>,
+    pub lows: Vec<f32>,
+    pub date_range: (OffsetDateTime, OffsetDateTime),
+    pub training: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -10,7 +10,7 @@ use burn::module::Module;
 use burn::optim::AdamWConfig;
 use burn::tensor::backend::AutodiffBackend;
 use burn::train::metric::store::{Aggregate, Direction, Split};
-use burn::train::metric::{AccuracyMetric, ClassReduction, LossMetric, PrecisionMetric};
+use burn::train::metric::{ClassReduction, LossMetric, PrecisionMetric};
 use burn::train::{
     Learner, MetricEarlyStoppingStrategy, StoppingCondition, SupervisedTraining, TrainingStrategy,
 };
@@ -85,11 +85,8 @@ impl<B: AutodiffBackend> Model<B> {
             .metric_train_numeric(SharpeRatioMetrics::default())
             .metric_valid_numeric(valid_sharpe)
             // Precision
-            .metric_train_numeric(PrecisionMetric::multiclass(1, ClassReduction::Macro))
-            .metric_valid_numeric(PrecisionMetric::multiclass(1, ClassReduction::Macro))
-            // Accuracy
-            .metric_train_numeric(AccuracyMetric::new())
-            .metric_valid_numeric(AccuracyMetric::new())
+            .metric_train_numeric(PrecisionMetric::multiclass(2, ClassReduction::Macro))
+            .metric_valid_numeric(PrecisionMetric::multiclass(2, ClassReduction::Macro))
             // Loss
             .metric_train_numeric(LossMetric::new())
             .metric_valid_numeric(LossMetric::new())
@@ -111,17 +108,17 @@ impl<B: AutodiffBackend> Model<B> {
 pub struct TrainingConfig {
     #[config(default = 0.001)]
     pub weight_decay: f32,
-    #[config(default = 50)]
+    #[config(default = 100)]
     pub epochs: usize,
-    #[config(default = 10)]
+    #[config(default = 100)]
     pub early_stopping_patience: usize,
-    #[config(default = 16)]
+    #[config(default = 32)]
     pub batch_size: usize,
     #[config(default = 4)]
     pub num_workers: usize,
     #[config(default = 12)]
     pub seed: u64,
-    #[config(default = 0.0001)]
+    #[config(default = 0.0003)]
     pub init_learning_rate: f64,
     #[config(default = 0.00001)]
     pub min_learning_rate: f64,

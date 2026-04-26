@@ -1,14 +1,16 @@
 use crate::batcher::DataBatch;
-use crate::consts::TOTAL_FEATURE_SIZE;
+use crate::consts::{CLASSES, TOTAL_FEATURE_SIZE};
 use crate::output::ModelOutput;
 use burn::Tensor;
 use burn::config::Config;
 use burn::module::Module;
+use burn::nn::conv::{Conv1d, Conv1dConfig};
 use burn::nn::loss::{CrossEntropyLoss, CrossEntropyLossConfig};
-use burn::nn::{
-    Dropout, DropoutConfig, Gelu, LayerNorm, LayerNormConfig, Linear, LinearConfig, Lstm,
-    LstmConfig,
+use burn::nn::pool::{AdaptiveAvgPool1d, AdaptiveAvgPool1dConfig};
+use burn::nn::transformer::{
+    TransformerEncoder, TransformerEncoderConfig, TransformerEncoderInput,
 };
+use burn::nn::{Dropout, DropoutConfig, Gelu, Linear, LinearConfig, PaddingConfig1d};
 use burn::prelude::Backend;
 use burn::record::CompactRecorder;
 use burn::tensor::Int;
@@ -20,32 +22,40 @@ use std::path::Path;
 #[derive(Debug, Module)]
 pub struct Model<B: Backend> {
     loss: CrossEntropyLoss<B>,
-    lstm1: Lstm<B>,
-    lstm2: Lstm<B>,
+
+    conv: Conv1d<B>,
+    conv_act: Gelu,
     dropout: Dropout,
-    norm: LayerNorm<B>,
-    act: Gelu,
-    lin: Linear<B>,
+    transformer: TransformerEncoder<B>,
+    pool: AdaptiveAvgPool1d,
+    head: Linear<B>,
 }
 
 impl<B: Backend> Model<B> {
     pub fn forward(&self, x: Tensor<B, 3>) -> Tensor<B, 2> {
-        let (x, _) = self.lstm1.forward(x, None);
-        let (x, state2) = self.lstm2.forward(x, None);
+        // x: [B, T, F] -> [B, F, T]
+        let x = x.swap_dims(1, 2);
 
-        // Mean over timesteps -> result likely has shape [batch, 1, hidden], so squeeze the middle dim
-        let x_mean = x.mean_dim(1).squeeze_dim::<2>(1); // -> [batch, hidden]
-
-        // state2.hidden is already [batch, hidden]
-        let last_layer_h = state2.hidden; // -> [batch, hidden]
-
-        // Concatenate along feature axis -> [batch, hidden*2]
-        let x = Tensor::cat(vec![last_layer_h, x_mean], 1);
-
+        // Conv feature extraction
+        let x = self.conv.forward(x);
+        let x = self.conv_act.forward(x);
         let x = self.dropout.forward(x);
-        let x = self.norm.forward(x);
-        let x = self.act.forward(x);
-        self.lin.forward(x)
+
+        // Transformer expects [B, T, C]
+        let x = x.swap_dims(1, 2);
+
+        let x = self.transformer.forward(TransformerEncoderInput::new(x));
+
+        // back to [B, C, T]
+        let x = x.swap_dims(1, 2);
+
+        // pooling over time → [B, C, 1]
+        let x = self.pool.forward(x);
+
+        let x = x.squeeze::<2>(); // [B, C]
+
+        // classification head
+        self.head.forward(x)
     }
 
     pub fn forward_classification(
@@ -101,17 +111,22 @@ impl<B: Backend> InferenceStep for Model<B> {
 
 #[derive(Config, Debug)]
 pub struct ModelConfig {
-    /// Loss smoothing factor.
-    #[config(default = 0.001)]
+    #[config(default = 0.05)]
     pub loss_smoothing: f32,
-
-    /// Hidden size of layers like Linear and Lstm.
-    #[config(default = 64)]
-    pub hidden_size: usize,
-
-    /// Dropout probability.
-    #[config(default = 0.35)]
+    #[config(default = 0.1)]
     pub dropout: f64,
+    #[config(default = 128)]
+    pub d_model: usize,
+    #[config(default = 256)]
+    pub d_ff: usize,
+    #[config(default = 4)]
+    pub n_heads: usize,
+    #[config(default = 2)]
+    pub n_layers: usize,
+    #[config(default = 3)]
+    pub kernel_size: usize,
+    #[config(default = 1)]
+    pub pool_size: usize,
 }
 
 impl ModelConfig {
@@ -121,12 +136,21 @@ impl ModelConfig {
                 .with_logits(true)
                 .with_smoothing(Some(self.loss_smoothing))
                 .init(device),
-            lstm1: LstmConfig::new(TOTAL_FEATURE_SIZE, self.hidden_size, true).init(device),
-            lstm2: LstmConfig::new(self.hidden_size, self.hidden_size, true).init(device),
+            conv: Conv1dConfig::new(TOTAL_FEATURE_SIZE, self.d_model, self.kernel_size)
+                .with_padding(PaddingConfig1d::Same)
+                .init(device),
             dropout: DropoutConfig::new(self.dropout).init(),
-            norm: LayerNormConfig::new(self.hidden_size * 2).init(device),
-            act: Gelu::new(),
-            lin: LinearConfig::new(self.hidden_size * 2, 2).init(device),
+            conv_act: Gelu::new(),
+            transformer: TransformerEncoderConfig::new(
+                self.d_model,
+                self.d_ff,
+                self.n_heads,
+                self.n_layers,
+            )
+            .with_dropout(self.dropout)
+            .init(device),
+            pool: AdaptiveAvgPool1dConfig::new(self.pool_size).init(),
+            head: LinearConfig::new(self.d_model, CLASSES).init(device),
         }
     }
 

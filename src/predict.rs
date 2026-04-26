@@ -1,6 +1,7 @@
-use crate::fetch::fetch_data;
+use crate::fetch::fetch_stock;
 use crate::utils::{DATE_FORMAT, parse_date, yahoo};
-use mirada_lib::consts::HORIZON;
+use mirada_lib::consts::{HORIZON, OTHER_STOCKS};
+use mirada_lib::data::StockData;
 use mirada_lib::model::{Model, ModelConfig};
 use mirada_lib::{Backend, Device};
 use std::path::Path;
@@ -32,14 +33,25 @@ pub fn predict(
     let model = Model::<Backend>::load(model_cfg, model_path, &device);
 
     let data = {
-        let data = fetch_data(&yahoo, start, end, ticker.clone(), false, 0);
+        let data = fetch_stock(&yahoo, start, end, ticker.clone(), false, 0);
 
-        let others = others
+        let others: [Vec<f32>; OTHER_STOCKS] = others
             .into_iter()
-            .map(|other| fetch_data(&yahoo, start, end, other, false, 0))
-            .collect::<Vec<_>>();
+            .map(|other| fetch_stock(&yahoo, start, end, other, false, 0).closes)
+            .collect::<Vec<_>>()
+            .try_into()
+            .expect("Must provide OTHER_STOCKS other stocks");
 
-        data.merge::<Backend>(others, &device)
+        StockData::new(
+            data.opens,
+            data.closes,
+            others,
+            data.volumes,
+            data.highs,
+            data.lows,
+            data.date_range,
+            data.training,
+        )
     };
 
     log::info!("Predicting price for '{ticker}'....");

@@ -75,7 +75,7 @@ pub fn build_dataset(mut reader: Reader<File>) -> StockDataset {
         let start = parse_date(&record.start);
         let end = parse_date(&record.end);
 
-        dataset.add_item(record.ticker, start, end, record.others);
+        dataset.add_item(record.ticker, start, end);
     }
 
     dataset

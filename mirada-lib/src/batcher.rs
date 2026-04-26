@@ -26,7 +26,7 @@ impl<B: Backend> Batcher<B, DataItem, DataBatch<B>> for StockBatcher {
 
         for item in items {
             let item = item
-                .to_stock_data::<B>(&self.database, device)
+                .to_stock_data::<B>(&self.database)
                 .expect("Failed to get stock data");
 
             let (feature, target, ret) = item.into_tensors(device);

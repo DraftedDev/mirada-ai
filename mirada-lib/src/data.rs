@@ -1,5 +1,5 @@
 use crate::consts::{
-    FEATURE_SIZE, HORIZON, OTHER_STOCKS, ROLLING_WINDOW, SKIPPED_TIMESTEPS, TEMP_WINDOWS,
+    EPS, HORIZON, OTHER_STOCKS, ROLLING_WINDOW, SKIPPED_TIMESTEPS, TEMP_WINDOWS, TOTAL_FEATURE_SIZE,
 };
 use crate::math::{generate_targets, normalize, process};
 use burn::Tensor;
@@ -46,6 +46,7 @@ impl StockData {
     pub fn new(
         opens: Vec<f32>,
         closes: Vec<f32>,
+        closes_other: [Vec<f32>; OTHER_STOCKS],
         volumes: Vec<f32>,
         highs: Vec<f32>,
         lows: Vec<f32>,
@@ -55,11 +56,12 @@ impl StockData {
         let n = closes.len();
         assert!(n > 0, "Empty input series");
 
-        // Validate all OHLCV inputs
+        // Validate primary OHLCV inputs.
         assert!(
             opens.len() == n && volumes.len() == n && highs.len() == n && lows.len() == n,
             "OHLCV series must already be date-aligned"
         );
+
         for i in 0..n {
             assert!(opens[i].is_finite(), "Open data [{i}] must be finite");
             assert!(closes[i].is_finite(), "Close data [{i}] must be finite");
@@ -68,7 +70,19 @@ impl StockData {
             assert!(lows[i].is_finite(), "Low data [{i}] must be finite");
         }
 
-        // Minimum history needed
+        // Validate cross-asset closes too.
+        for (k, series) in closes_other.iter().enumerate() {
+            assert_eq!(
+                series.len(),
+                n,
+                "closes_other[{k}] must be date-aligned with the main series"
+            );
+            for (i, v) in series.iter().enumerate() {
+                assert!(v.is_finite(), "closes_other[{k}][{i}] must be finite");
+            }
+        }
+
+        // Minimum history needed.
         let skip = ROLLING_WINDOW.max(SKIPPED_TIMESTEPS);
         assert!(
             n > skip + HORIZON + TEMP_WINDOWS - 1,
@@ -79,20 +93,23 @@ impl StockData {
             n
         );
 
-        // Cutoff for features (causal)
+        // Cutoff for features (causal).
         let feature_end = if train { n - HORIZON } else { n };
 
-        // Process & normalize features
-        let mut features = process(
-            &opens[..feature_end],
-            &closes[..feature_end],
-            &volumes[..feature_end],
-            &highs[..feature_end],
-            &lows[..feature_end],
-        );
-        features = normalize(&features);
+        // Build features.
+        let mut features = process(opens, closes.clone(), closes_other, volumes, highs, lows);
+        features = normalize(features);
 
-        // Keep only timesteps after skip
+        assert!(!features.is_empty(), "process() produced no features");
+
+        let feature_width = features[0].len();
+        assert_eq!(
+            feature_width, TOTAL_FEATURE_SIZE,
+            "FEATURE_SIZE mismatch: expected {}, got {}",
+            TOTAL_FEATURE_SIZE, feature_width
+        );
+
+        // Keep only usable timesteps.
         let features = &features[skip..feature_end];
         let n_days = features.len();
         assert!(
@@ -102,32 +119,32 @@ impl StockData {
 
         let n_samples = n_days - TEMP_WINDOWS + 1;
 
-        // Build temporal windows (3D)
-        let mut windows: Vec<f32> = Vec::with_capacity(n_samples * TEMP_WINDOWS * FEATURE_SIZE);
+        // Build temporal windows: [sample, time, feature].
+        let mut windows: Vec<f32> = Vec::with_capacity(n_samples * TEMP_WINDOWS * feature_width);
         for t in 0..n_samples {
             for w in 0..TEMP_WINDOWS {
                 windows.extend_from_slice(&features[t + w]);
             }
         }
 
-        // Generate targets aligned with the **end of each temporal window**
+        // Targets aligned with the end of each temporal window.
         let targets = if train {
             let all_targets = generate_targets(&closes, HORIZON);
-
-            // The first usable feature row corresponds to index `skip` in closes
             let first_feature_idx = skip;
+
             let targets_data: Vec<i32> = (0..n_samples)
                 .map(|i| all_targets[first_feature_idx + i + TEMP_WINDOWS - 1])
                 .collect();
 
-            // Log target distribution
             let up_count = targets_data.iter().filter(|&&t| t == 1).count();
-            let down_count = targets_data.len() - up_count;
+            let down_count = targets_data.iter().filter(|&&t| t == 0).count();
+            let denom = down_count.max(1) as f32;
+
             log::info!(
                 "Data Targets: Up ({}), Down ({}) Ratio: ({:.2})",
                 up_count,
                 down_count,
-                up_count as f32 / down_count as f32
+                up_count as f32 / denom
             );
 
             IntSerdeTensor::new([n_samples], targets_data)
@@ -139,25 +156,21 @@ impl StockData {
             "Final dataset: {} temporal windows, each with {} timesteps and {} features (train={})",
             n_samples,
             TEMP_WINDOWS,
-            FEATURE_SIZE,
+            feature_width,
             train
         );
 
         let returns = if train {
             let mut ret = Vec::with_capacity(n_samples);
-
             let first_feature_idx = skip;
 
             for i in 0..n_samples {
                 let t = first_feature_idx + i + TEMP_WINDOWS - 1;
 
-                let c0 = closes[t];
-                let c1 = closes[t + HORIZON];
+                let c0 = closes[t].max(EPS);
+                let c1 = closes[t + HORIZON].max(EPS);
 
-                // Use log return (more stable)
-                let r = (c1 / c0).ln();
-
-                ret.push(r);
+                ret.push((c1 / c0).ln());
             }
 
             FloatSerdeTensor::new([n_samples], ret)
@@ -165,75 +178,11 @@ impl StockData {
             FloatSerdeTensor::none()
         };
 
-        let feature_width = features[0].len();
-        let expected_len = n_samples * TEMP_WINDOWS * feature_width;
-        assert_eq!(
-            windows.len(),
-            expected_len,
-            "Window data size mismatch: got {}, expected {}",
-            windows.len(),
-            expected_len
-        );
-
         Self {
             features: FloatSerdeTensor::new([n_samples, TEMP_WINDOWS, feature_width], windows),
             targets,
             returns,
             time,
-        }
-    }
-
-    /// Merges the **features** from `other` into this [StockData].
-    ///
-    /// Does not merge targets, returns and time since it wouldn't make sense to do so.
-    pub fn merge<B: Backend>(self, others: Vec<StockData>, device: &B::Device) -> Self {
-        for other in &others {
-            assert_eq!(
-                self.time, other.time,
-                "All stocks must have the same start and end date"
-            );
-        }
-
-        assert_eq!(
-            others.len(),
-            OTHER_STOCKS,
-            "Can only process {OTHER_STOCKS} other stocks"
-        );
-
-        if self.features.shape[0] == 0 {
-            panic!("Stock features cannot have zero size");
-        } else if others.iter().any(|d| d.features.shape[0] == 0) {
-            panic!("Other stocks features cannot have zero size");
-        }
-
-        let shape = self.features.shape.clone();
-
-        // Convert self features to tensor
-        let mut merged = vec![self.features.to_tensor::<B>(device)];
-
-        // Convert other stocks' features to tensors and collect
-        for data in others.into_iter() {
-            assert_eq!(
-                shape[0], data.features.shape[0],
-                "All stocks must have the same number of timesteps"
-            );
-            let t = data.features.to_tensor::<B>(device);
-            assert_eq!(
-                t.dims().len(),
-                3,
-                "Expected 3D tensor for temporal windows [n_samples, TEMP_WINDOWS, FEATURE_SIZE]"
-            );
-            merged.push(t);
-        }
-
-        // Concatenate along the feature dimension (last axis)
-        let cat_features = Tensor::cat(merged, 2); // dim=2 = feature axis
-
-        Self {
-            features: FloatSerdeTensor::from_tensor(cat_features),
-            targets: self.targets,
-            returns: self.returns,
-            time: self.time,
         }
     }
 

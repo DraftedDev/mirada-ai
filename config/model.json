@@ -1,5 +1,10 @@
 {
-  "loss_smoothing": 0.01,
-  "hidden_size": 128,
-  "dropout": 0.35
+  "loss_smoothing": 0.05,
+  "dropout": 0.1,
+  "d_model": 128,
+  "d_ff": 256,
+  "n_heads": 4,
+  "n_layers": 2,
+  "kernel_size": 3,
+  "pool_size": 1
 }

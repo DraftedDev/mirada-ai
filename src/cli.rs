@@ -49,23 +49,8 @@ pub struct FetchArgs {
     /// Override and don't skip existing data.
     #[arg(short = 'o', long = "override", default_value_t = false)]
     pub _override: bool,
-    /// Whether to fetch multiple quotes using the given CSV file content as input args.
-    #[arg(
-        short = 'f',
-        long = "file",
-        conflicts_with_all = ["start", "end", "ticker"],
-        required_unless_present_all = ["start", "end", "ticker"]
-    )]
-    pub file: Option<String>,
-    /// The start date to fetch the data from in `dd-MM-YYYY` format.
-    #[arg(required_unless_present = "file")]
-    pub start: Option<String>,
-    /// The end date to fetch the data from in `dd-MM-YYYY` format.
-    #[arg(required_unless_present = "file")]
-    pub end: Option<String>,
-    /// The ticker to fetch the data for.
-    #[arg(required_unless_present = "file")]
-    pub ticker: Option<String>,
+    /// The file to use to get fetching information. Generated via `csv fetch`.
+    pub file: String,
 }
 
 /// Arguments for the train command.

@@ -40,9 +40,6 @@ fn main() {
             args.serial,
             args.retry,
             args._override,
-            args.start,
-            args.end,
-            args.ticker,
             args.file,
         ),
         Command::Train(args) => train::train(

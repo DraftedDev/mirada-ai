@@ -28,7 +28,6 @@ impl<B: AutodiffBackend> Model<B> {
         let dataloader = DataLoaderBuilder::new(batcher.clone())
             .batch_size(config.batch_size)
             .num_workers(config.num_workers)
-            .set_device(device)
             .build(dataset);
 
         let eval = EvaluatorBuilder::new(artifacts)

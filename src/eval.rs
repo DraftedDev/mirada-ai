@@ -2,15 +2,15 @@ use crate::train::build_dataset;
 use csv::{ReaderBuilder, Trim};
 use mirada_lib::AutodiffBackend;
 use mirada_lib::database::Database;
+use mirada_lib::eval::EvalConfig;
 use mirada_lib::model::{Model, ModelConfig};
-use mirada_lib::training::TrainingConfig;
 use std::path::Path;
 
 pub fn eval(
     database: String,
     dataset: String,
     model_cfg: String,
-    training_cfg: String,
+    eval_cfg: String,
     artifacts: String,
 ) {
     let database = Database::new(database);
@@ -26,7 +26,7 @@ pub fn eval(
 
     log::info!("Loading configuration files...");
     let model_cfg = ModelConfig::load_or_create(model_cfg);
-    let training_cfg = TrainingConfig::load_or_create(training_cfg);
+    let training_cfg = EvalConfig::load_or_create(eval_cfg);
 
     log::info!("Creating device...");
     let device = mirada_lib::Device::default();

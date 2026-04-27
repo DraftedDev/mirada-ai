@@ -104,13 +104,9 @@ pub struct EvalArgs {
     /// Path to the model configuration. Will be created if it doesn't exist yet.
     #[arg(short = 'm', long = "model", default_value = "./config/model.json")]
     pub model: String,
-    /// Path to the training configuration. Will be created if it doesn't exist yet.
-    #[arg(
-        short = 't',
-        long = "training",
-        default_value = "./config/training.json"
-    )]
-    pub training: String,
+    /// Path to the eval configuration. Will be created if it doesn't exist yet.
+    #[arg(short = 'e', long = "eval", default_value = "./config/eval.json")]
+    pub eval: String,
     /// The artifacts directory to use for training.
     #[arg(short = 'a', long = "artifacts", default_value = "./artifacts")]
     pub artifacts: String,

@@ -64,7 +64,7 @@ fn main() {
             cli.database,
             args.dataset,
             args.model,
-            args.training,
+            args.eval,
             args.artifacts,
         ),
         Command::Dump(args) => dump::dump(cli.database, args.kind),

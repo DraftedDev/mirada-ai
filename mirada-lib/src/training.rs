@@ -10,7 +10,7 @@ use burn::module::Module;
 use burn::optim::AdamWConfig;
 use burn::tensor::backend::AutodiffBackend;
 use burn::train::metric::store::{Aggregate, Direction, Split};
-use burn::train::metric::{ClassReduction, LossMetric, PrecisionMetric};
+use burn::train::metric::{AccuracyMetric, ClassReduction, LossMetric, PrecisionMetric};
 use burn::train::{
     Learner, MetricEarlyStoppingStrategy, StoppingCondition, SupervisedTraining, TrainingStrategy,
 };
@@ -87,6 +87,9 @@ impl<B: AutodiffBackend> Model<B> {
             // Precision
             .metric_train_numeric(PrecisionMetric::multiclass(2, ClassReduction::Macro))
             .metric_valid_numeric(PrecisionMetric::multiclass(2, ClassReduction::Macro))
+            // Accuracy
+            .metric_train_numeric(AccuracyMetric::new())
+            .metric_valid_numeric(AccuracyMetric::new())
             // Loss
             .metric_train_numeric(LossMetric::new())
             .metric_valid_numeric(LossMetric::new())

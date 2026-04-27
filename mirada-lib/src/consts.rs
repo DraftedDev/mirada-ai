@@ -1,5 +1,5 @@
 pub const CLIP: f32 = 5.0;
-pub const TEMP_WINDOWS: usize = 16;
+pub const TEMP_WINDOWS: usize = 40;
 pub const ROLLING_WINDOW: usize = 30;
 pub const HORIZON: usize = 5;
 pub const FEATURE_SIZE: usize = 11;

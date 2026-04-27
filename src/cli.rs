@@ -154,8 +154,12 @@ pub struct CsvFetchArgs {
     pub end: String,
     /// The length for each sample in days.
     pub length: u64,
-    /// The amount of days to shift the timestep until the end is reached.
+    /// The range of shifts to use.
     pub shift: u64,
+    /// The start of the jitter.
+    pub jitter_start: u64,
+    /// The end of the jitter.
+    pub jitter_end: u64,
     /// The tickers to use for generation.
     #[arg(value_delimiter = ',', required = true)]
     pub tickers: Vec<String>,

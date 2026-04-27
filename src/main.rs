@@ -75,6 +75,8 @@ fn main() {
                 args.end,
                 args.length,
                 args.shift,
+                args.jitter_start,
+                args.jitter_end,
                 args.tickers,
             ),
             CsvCommand::Train(args) => csv::train(args.out1, args.out2, args.percent, args.input),

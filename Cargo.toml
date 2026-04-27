@@ -21,6 +21,8 @@ mirada-lib = { path = "mirada-lib", features = ["cuda"] }
 csv = "1.4.0"
 trading-calendar = "0.2.3"
 rayon = "1.11.0"
+rand = "0.10.1"
 log = { workspace = true }
 serde = { workspace = true }
 time = { workspace = true, features = ["macros"] }
+

@@ -1,6 +1,7 @@
 use crate::utils::{CHRONO_DATE_FORMAT, parse_date};
 use crate::{fetch, train};
 use csv::{ReaderBuilder, WriterBuilder};
+use rand::RngExt;
 use serde::Serialize;
 use std::collections::BTreeMap;
 use trading_calendar::{Market, NaiveDate, TradingCalendar};
@@ -11,55 +12,62 @@ pub fn fetch(
     end: String,
     length: u64,
     shift: u64,
+    jitter_start: u64,
+    jitter_end: u64,
     tickers: Vec<String>,
 ) {
     let (start_y, start_o) = parse_date(&start).to_ordinal_date();
     let start =
         NaiveDate::from_yo_opt(start_y, start_o as u32).expect("Failed to parse start date");
+
     let (end_y, end_o) = parse_date(&end).to_ordinal_date();
     let end = NaiveDate::from_yo_opt(end_y, end_o as u32).expect("Failed to parse end date");
 
-    // initialize NASDAQ trading calendar
     let calendar = TradingCalendar::new(Market::NASDAQ).expect("Failed to get NASDAQ calendar");
 
+    let mut rng = rand::rng();
+
     log::info!(
-        "Generating rows (window = {} trading days, shift = {} trading days)...",
+        "Generating rows (window = {}, base shift = {}, jitter = {}-{})...",
         length,
-        shift
+        shift,
+        jitter_start,
+        jitter_end
     );
 
+    let mut trading_days = Vec::new();
+    let mut d = start;
+    while d <= end {
+        trading_days.push(d);
+        d = calendar.next_trading_day(d);
+    }
+
+    let max_start = trading_days.len().saturating_sub(length as usize);
+
+    if max_start == 0 {
+        panic!("Not enough data to build any window");
+    }
+
     let mut rows = Vec::new();
-    let mut current_start = calendar.next_trading_day(start);
 
-    while current_start < end {
-        // get the end date of the window (length trading days after current_start)
-        let mut current_end = current_start;
+    let target_samples = max_start;
 
-        for _ in 0..(length - 1) {
-            current_end = calendar.next_trading_day(current_end);
-        }
+    for _ in 0..target_samples {
+        let start_idx = rng.random_range(0..max_start);
+        let current_start = trading_days[start_idx];
+
+        let current_end = trading_days[start_idx + length as usize - 1];
 
         if current_end >= end {
-            log::warn!(
-                "Window from {} to {} exceeds end date. Skipping...",
-                current_start,
-                current_end
-            );
-            break;
+            continue;
         }
 
-        // add a row for each ticker
         for ticker in &tickers {
             rows.push(fetch::Record {
                 ticker: ticker.clone(),
                 start: current_start.format(CHRONO_DATE_FORMAT).to_string(),
                 end: current_end.format(CHRONO_DATE_FORMAT).to_string(),
             });
-        }
-
-        // advance start by `shift` trading days
-        for _ in 0..shift {
-            current_start = calendar.next_trading_day(current_start);
         }
     }
 

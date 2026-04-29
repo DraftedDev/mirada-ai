@@ -1,3 +1,4 @@
+use crate::csv::Record;
 use crate::utils::parse_date;
 use csv::{Reader, ReaderBuilder, Trim};
 use mirada_lib::AutodiffBackend;
@@ -5,7 +6,6 @@ use mirada_lib::database::Database;
 use mirada_lib::dataset::StockDataset;
 use mirada_lib::model::{Model, ModelConfig};
 use mirada_lib::training::TrainingConfig;
-use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::path::Path;
 
@@ -79,16 +79,4 @@ pub fn build_dataset(mut reader: Reader<File>) -> StockDataset {
     }
 
     dataset
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct Record {
-    pub ticker: String,
-    pub start: String,
-    pub end: String,
-    #[serde(
-        deserialize_with = "crate::utils::split_tags",
-        serialize_with = "crate::utils::join_tags"
-    )]
-    pub others: Vec<String>,
 }

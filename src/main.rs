@@ -1,4 +1,4 @@
-use crate::cli::{Command, CsvCommand, MirandaCli};
+use crate::cli::{Command, MirandaCli};
 use clap::Parser;
 use log::LevelFilter;
 
@@ -68,18 +68,14 @@ fn main() {
             args.artifacts,
         ),
         Command::Dump(args) => dump::dump(cli.database, args.kind),
-        Command::Csv(args) => match args.command {
-            CsvCommand::Fetch(args) => csv::fetch(
-                args.out,
-                args.start,
-                args.end,
-                args.length,
-                args.shift,
-                args.jitter_start,
-                args.jitter_end,
-                args.tickers,
-            ),
-            CsvCommand::Train(args) => csv::train(args.out1, args.out2, args.percent, args.input),
-        },
+        Command::Csv(args) => csv::csv(
+            args.out,
+            args.start,
+            args.end,
+            args.length,
+            args.samples,
+            args.ticker,
+            args.others,
+        ),
     }
 }

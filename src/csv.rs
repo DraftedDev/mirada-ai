@@ -1,20 +1,18 @@
 use crate::utils::{CHRONO_DATE_FORMAT, parse_date};
-use crate::{fetch, train};
-use csv::{ReaderBuilder, WriterBuilder};
+use csv::WriterBuilder;
 use rand::RngExt;
-use serde::Serialize;
-use std::collections::BTreeMap;
+use rand::prelude::SliceRandom;
+use serde::{Deserialize, Serialize};
 use trading_calendar::{Market, NaiveDate, TradingCalendar};
 
-pub fn fetch(
+pub fn csv(
     output: String,
     start: String,
     end: String,
     length: u64,
-    shift: u64,
-    jitter_start: u64,
-    jitter_end: u64,
-    tickers: Vec<String>,
+    samples: usize,
+    ticker: String,
+    others: Vec<String>,
 ) {
     let (start_y, start_o) = parse_date(&start).to_ordinal_date();
     let start =
@@ -28,15 +26,14 @@ pub fn fetch(
     let mut rng = rand::rng();
 
     log::info!(
-        "Generating rows (window = {}, base shift = {}, jitter = {}-{})...",
+        "Generating rows (window = {}, samples = {})...",
         length,
-        shift,
-        jitter_start,
-        jitter_end
+        samples,
     );
 
     let mut trading_days = Vec::new();
     let mut d = start;
+
     while d <= end {
         trading_days.push(d);
         d = calendar.next_trading_day(d);
@@ -48,83 +45,43 @@ pub fn fetch(
         panic!("Not enough data to build any window");
     }
 
-    let mut rows = Vec::new();
+    let mut indices: Vec<usize> = (0..max_start).collect();
+    indices.shuffle(&mut rng);
 
-    let target_samples = max_start;
+    let mut rows = Vec::with_capacity(samples);
 
-    for _ in 0..target_samples {
-        let start_idx = rng.random_range(0..max_start);
+    for &start_idx in indices.iter().take(samples.min(max_start)) {
         let current_start = trading_days[start_idx];
-
         let current_end = trading_days[start_idx + length as usize - 1];
 
-        if current_end >= end {
-            continue;
-        }
+        rows.push(Record {
+            ticker: ticker.clone(),
+            start: current_start.format(CHRONO_DATE_FORMAT).to_string(),
+            end: current_end.format(CHRONO_DATE_FORMAT).to_string(),
+            others: others.clone(),
+        });
+    }
 
-        for ticker in &tickers {
-            rows.push(fetch::Record {
+    if samples > max_start {
+        log::info!("Generating duplicates to match samples...");
+
+        for _ in 0..(samples - max_start) {
+            let start_idx = rng.random_range(0..max_start);
+
+            let current_start = trading_days[start_idx];
+            let current_end = trading_days[start_idx + length as usize - 1];
+
+            rows.push(Record {
                 ticker: ticker.clone(),
                 start: current_start.format(CHRONO_DATE_FORMAT).to_string(),
                 end: current_end.format(CHRONO_DATE_FORMAT).to_string(),
+                others: others.clone(),
             });
         }
     }
 
     log::info!("Writing {} rows to '{}'", rows.len(), output);
     write_csv_to(output, &rows);
-}
-
-pub fn train(out1: String, out2: String, percent: f32, input: String) {
-    let mut groups: BTreeMap<(String, String), Vec<String>> = BTreeMap::new();
-
-    log::info!("Reading input file '{input}'...");
-    let mut rdr = ReaderBuilder::new()
-        .from_path(&input)
-        .expect("Failed to open input file");
-
-    for result in rdr.deserialize() {
-        let record: fetch::Record = result.expect("Error parsing record");
-        groups
-            .entry((record.start, record.end))
-            .or_default()
-            .push(record.ticker);
-    }
-
-    log::info!("Processing input rows...");
-    let mut processed_rows: Vec<train::Record> = groups
-        .into_iter()
-        .filter_map(|((start, end), tickers)| {
-            if tickers.is_empty() {
-                None
-            } else {
-                let primary = tickers[0].clone();
-                let others = tickers[1..].to_vec();
-                Some(train::Record {
-                    ticker: primary,
-                    start,
-                    end,
-                    others,
-                })
-            }
-        })
-        .collect();
-
-    let total_groups = processed_rows.len();
-    let split_idx = (total_groups as f32 * (percent / 100.0)) as usize;
-
-    let rows2 = processed_rows.split_off(split_idx);
-    let rows1 = processed_rows;
-
-    write_csv_to(out1, &rows1);
-    write_csv_to(out2, &rows2);
-
-    log::info!(
-        "Successfully split {} full rows into {}/{}",
-        total_groups,
-        rows1.len(),
-        rows2.len()
-    );
 }
 
 fn write_csv_to<S: Serialize>(out: String, rows: &[S]) {
@@ -151,4 +108,16 @@ fn write_csv_to<S: Serialize>(out: String, rows: &[S]) {
 
         writer.flush().expect("Failed to flush to file");
     }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Record {
+    pub ticker: String,
+    pub start: String,
+    pub end: String,
+    #[serde(
+        deserialize_with = "crate::utils::split_tags",
+        serialize_with = "crate::utils::join_tags"
+    )]
+    pub others: Vec<String>,
 }

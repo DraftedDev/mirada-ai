@@ -1,10 +1,10 @@
+use crate::csv::Record;
 use crate::utils::{DATE_FORMAT, parse_date, yahoo};
 use csv::Trim;
 use mirada_lib::consts::OTHER_STOCKS;
 use mirada_lib::data::{DataKey, StockData};
 use mirada_lib::database::Database;
 use rayon::prelude::*;
-use serde::{Deserialize, Serialize};
 use std::sync::atomic::AtomicU64;
 use std::time::Duration;
 use yahoo_finance_api::YahooConnector;
@@ -53,10 +53,14 @@ pub fn fetch(
             log::warn!("Key {} already exists. Skipping...", key);
             None
         } else {
-            Some((
-                key,
-                fetch_stock(&yahoo, start, end, record.ticker.clone(), true, retry),
-            ))
+            let target = fetch_stock(&yahoo, start, end, record.ticker, true, retry);
+            let others = record
+                .others
+                .into_iter()
+                .map(|other| fetch_stock(&yahoo, start, end, other, true, retry))
+                .collect::<Vec<_>>();
+
+            Some((key, target, others))
         }
     };
 
@@ -69,26 +73,22 @@ pub fn fetch(
             .collect::<Vec<_>>()
     };
 
-    let items = items.chunks_exact(OTHER_STOCKS + 1).map(|stocks| {
-        let (key, target) = stocks[0].clone();
-        let others: [Vec<f32>; OTHER_STOCKS] = stocks[1..=OTHER_STOCKS]
-            .into_iter()
-            .map(|(_, data)| data.closes.clone())
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap_or_else(|_| {
-                panic!(
-                    "Expected {OTHER_STOCKS} other stocks, but got {}",
-                    stocks.len() - 1
-                )
-            });
+    let items = items.into_iter().map(|(key, target, others)| {
+        let other_closes = others.into_iter().map(|res| res.closes).collect::<Vec<_>>();
+
+        assert_eq!(
+            other_closes.len(),
+            OTHER_STOCKS,
+            "Must provide exactly {OTHER_STOCKS} stocks, but {} were given",
+            other_closes.len()
+        );
 
         (
             key,
             StockData::new(
                 target.opens,
                 target.closes,
-                others,
+                other_closes.try_into().unwrap(),
                 target.volumes,
                 target.highs,
                 target.lows,
@@ -173,11 +173,4 @@ pub struct FetchResult {
     pub lows: Vec<f32>,
     pub date_range: (OffsetDateTime, OffsetDateTime),
     pub training: bool,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Record {
-    pub ticker: String,
-    pub start: String,
-    pub end: String,
 }

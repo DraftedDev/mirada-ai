@@ -33,7 +33,7 @@ pub enum Command {
     Eval(EvalArgs),
     /// Dumps the given data kind out to the console.
     Dump(DumpArgs),
-    /// CSV generation utilities.
+    /// Generate CSV data to use for fetching/training.
     Csv(CsvArgs),
 }
 
@@ -124,23 +124,6 @@ pub struct DumpArgs {
 /// Arguments for the csv command.
 #[derive(Args)]
 pub struct CsvArgs {
-    /// The subcommand to the csv command.
-    #[command(subcommand)]
-    pub command: CsvCommand,
-}
-
-/// The csv subcommand.
-#[derive(Subcommand)]
-pub enum CsvCommand {
-    /// Generate CSV data to use as input for the `fetch -f` command.
-    Fetch(CsvFetchArgs),
-    /// Generate CSV data to use as input datasets for the `train` command.
-    Train(CsvTrainArgs),
-}
-
-/// Arguments for the csv fetch command.
-#[derive(Args)]
-pub struct CsvFetchArgs {
     /// The output file to write to. Use `stdout` to write to the console.
     #[arg(short = 'o', long = "out", default_value = "stdout")]
     pub out: String,
@@ -150,15 +133,13 @@ pub struct CsvFetchArgs {
     pub end: String,
     /// The length for each sample in days.
     pub length: u64,
-    /// The range of shifts to use.
-    pub shift: u64,
-    /// The start of the jitter.
-    pub jitter_start: u64,
-    /// The end of the jitter.
-    pub jitter_end: u64,
-    /// The tickers to use for generation.
+    /// The amount of samples to generate.
+    pub samples: usize,
+    /// The target ticker to use for generation.
+    pub ticker: String,
+    /// The other tickers to use for generation.
     #[arg(value_delimiter = ',', required = true)]
-    pub tickers: Vec<String>,
+    pub others: Vec<String>,
 }
 
 /// Arguments for the csv train command.

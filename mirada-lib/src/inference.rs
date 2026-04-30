@@ -32,19 +32,4 @@ impl<B: Backend> Model<B> {
 
         preds[0]
     }
-
-    /// Infer if the given input is an up or down move.
-    ///
-    /// Returns `true` if the model predicts an up move or `false` if it predicts a down move.
-    pub fn infer_up(&self, input: StockData, device: &B::Device) -> bool {
-        let class = self.infer(input, device);
-
-        if class == 0 {
-            false
-        } else if class == 1 {
-            true
-        } else {
-            panic!("Invalid class. This should never happen!")
-        }
-    }
 }

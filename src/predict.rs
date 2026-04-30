@@ -1,11 +1,12 @@
 use crate::fetch::fetch_stock;
-use crate::utils::{DATE_FORMAT, parse_date, yahoo};
+use crate::utils;
+use crate::utils::{CHRONO_DATE_FORMAT, DATE_FORMAT, parse_date, yahoo};
 use mirada_lib::consts::{HORIZON, OTHER_STOCKS};
 use mirada_lib::data::StockData;
 use mirada_lib::model::{Model, ModelConfig};
 use mirada_lib::{Backend, Device};
 use std::path::Path;
-use time::Duration;
+use trading_calendar::{Market, TradingCalendar};
 
 pub fn predict(
     timeout: u64,
@@ -50,14 +51,26 @@ pub fn predict(
             data.highs,
             data.lows,
             data.date_range,
-            data.training,
+            false,
         )
     };
 
     log::info!("Predicting price for '{ticker}'....");
-    let is_up = model.infer_up(data, &device);
+    let result = model.infer(data, &device);
 
-    let approx_date = end + Duration::days(1) * HORIZON as u32;
+    let class = match result {
+        0 => "Down (-)",
+        1 => "Neutral",
+        2 => "Up (+)",
+        _ => unreachable!(),
+    };
+
+    let calendar = TradingCalendar::new(Market::NASDAQ).expect("Failed to get NASDAQ calendar");
+    let mut approx = utils::date_to_naive(end.date());
+
+    for _ in 0..HORIZON {
+        approx = calendar.next_trading_day(approx);
+    }
 
     log::info!(
         "### MODEL PREDICTION ###\n\
@@ -67,11 +80,9 @@ pub fn predict(
     \tHorizon: {} bars\n\
     \tApprox. Date: {}",
         ticker,
-        if is_up { "Up (+)" } else { "Down (-)" },
+        class,
         end.format(DATE_FORMAT).expect("Failed to format end date"),
         HORIZON,
-        approx_date
-            .format(DATE_FORMAT)
-            .expect("Failed to format approx date")
+        approx.format(CHRONO_DATE_FORMAT).to_string()
     );
 }

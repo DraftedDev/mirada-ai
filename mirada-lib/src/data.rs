@@ -97,7 +97,19 @@ impl StockData {
         let feature_end = if train { n - HORIZON } else { n };
 
         // Build features.
-        let mut features = process(opens, closes.clone(), closes_other, volumes, highs, lows);
+        let mut features = process(
+            opens[..feature_end].to_vec(),
+            closes[..feature_end].to_vec(),
+            closes_other
+                .iter()
+                .map(|v| v[..feature_end].to_vec())
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap(),
+            volumes[..feature_end].to_vec(),
+            highs[..feature_end].to_vec(),
+            lows[..feature_end].to_vec(),
+        );
         features = normalize(features);
 
         assert!(!features.is_empty(), "process() produced no features");
@@ -110,7 +122,7 @@ impl StockData {
         );
 
         // Keep only usable timesteps.
-        let features = &features[skip..feature_end];
+        let features = &features[skip..];
         let n_days = features.len();
         assert!(
             n_days >= TEMP_WINDOWS,
@@ -136,7 +148,7 @@ impl StockData {
                 .map(|i| all_targets[first_feature_idx + i + TEMP_WINDOWS - 1])
                 .collect();
 
-            let up_count = targets_data.iter().filter(|&&t| t == 1).count();
+            let up_count = targets_data.iter().filter(|&&t| t == 2).count();
             let down_count = targets_data.iter().filter(|&&t| t == 0).count();
             let denom = down_count.max(1) as f32;
 

@@ -13,11 +13,6 @@ impl<B: Backend> Model<B> {
         let t = features.dims()[0];
 
         assert!(t > 0, "No timesteps available");
-        assert_eq!(
-            features.dims()[1],
-            TOTAL_FEATURE_SIZE,
-            "Expected TOTAL_FEATURE_SIZE = {TOTAL_FEATURE_SIZE}"
-        );
 
         let input = features.slice([t - 1..t, 0..TOTAL_FEATURE_SIZE]);
 
